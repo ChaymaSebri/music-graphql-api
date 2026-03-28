@@ -205,32 +205,57 @@ module.exports = {
       assertPositiveInt(args.trackNumber, 'trackNumber');
     }
 
-    const albumId = await assertExists(prisma.album, args.albumId, 'Album');
-    const artistId = await assertExists(prisma.artist, args.artistId, 'Artist');
-    const genreId = await assertExists(prisma.genre, args.genreId, 'Genre');
-
     const normalizedTitle = args.title.trim();
-    const existingSong = await prisma.song.findFirst({
-      where: { title: normalizedTitle, albumId, artistId },
-    });
-    if (existingSong) {
-      throw new GraphQLError('Song already exists for this artist and album', {
-        extensions: { code: 'BAD_USER_INPUT' },
-      });
-    }
 
     try {
-      const song = await prisma.song.create({
-        data: {
-          title: normalizedTitle,
-          duration: args.duration,
-          trackNumber: args.trackNumber || null,
-          albumId,
-          artistId,
-          genreId,
-        },
-        include: songInclude,
+      const song = await prisma.$transaction(async (tx) => {
+        const albumId = await assertExists(tx.album, args.albumId, 'Album');
+        const artistId = await assertExists(tx.artist, args.artistId, 'Artist');
+        const genreId = await assertExists(tx.genre, args.genreId, 'Genre');
+
+        const existingSong = await tx.song.findFirst({
+          where: { title: normalizedTitle, albumId, artistId },
+        });
+        if (existingSong) {
+          throw new GraphQLError('Song already exists for this artist and album', {
+            extensions: { code: 'BAD_USER_INPUT' },
+          });
+        }
+
+        let finalTrackNumber = args.trackNumber ?? null;
+        if (finalTrackNumber == null) {
+          const lastTrack = await tx.song.findFirst({
+            where: { albumId, trackNumber: { not: null } },
+            orderBy: { trackNumber: 'desc' },
+            select: { trackNumber: true },
+          });
+          finalTrackNumber = (lastTrack?.trackNumber || 0) + 1;
+        } else {
+          const existingTrack = await tx.song.findFirst({
+            where: { albumId, trackNumber: finalTrackNumber },
+            select: { id: true },
+          });
+
+          if (existingTrack) {
+            throw new GraphQLError(`trackNumber ${finalTrackNumber} already exists in this album`, {
+              extensions: { code: 'BAD_USER_INPUT' },
+            });
+          }
+        }
+
+        return tx.song.create({
+          data: {
+            title: normalizedTitle,
+            duration: args.duration,
+            trackNumber: finalTrackNumber,
+            albumId,
+            artistId,
+            genreId,
+          },
+          include: songInclude,
+        });
       });
+
       pubsub.publish('SONG_ADDED', { songAdded: song });
       return song;
     } catch (error) {
