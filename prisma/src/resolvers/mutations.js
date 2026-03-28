@@ -278,10 +278,30 @@ module.exports = {
     return prisma.song.update({ where: { id: +id }, data: updates, include: songInclude });
   },
   deleteSong: async (_, { id }) => {
-    await assertExists(prisma.song, id, 'Song');
+    const songId = await assertExists(prisma.song, id, 'Song');
 
     try {
-      await prisma.song.delete({ where: { id: +id } });
+      await prisma.$transaction(async (tx) => {
+        // Delete all reviews associated with this song
+        await tx.review.deleteMany({ where: { songId } });
+
+        // Remove song from all playlists (find and update each playlist)
+        const playlistsWithSong = await tx.playlist.findMany({
+          where: { songs: { some: { id: songId } } },
+          select: { id: true },
+        });
+        
+        for (const playlist of playlistsWithSong) {
+          await tx.playlist.update({
+            where: { id: playlist.id },
+            data: { songs: { disconnect: { id: songId } } },
+          });
+        }
+
+        // Delete the song itself
+        await tx.song.delete({ where: { id: songId } });
+      });
+
       pubsub.publish('SONG_DELETED', { songDeleted: id });
       return true;
     } catch (error) {
