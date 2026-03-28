@@ -17,7 +17,7 @@ module.exports = {
   song:      (_, { id }) => prisma.song.findUnique({ where: { id: +id }, include: songInclude }),
 
   playlists: () => prisma.playlist.findMany({ include: { songs: { include: songInclude } } }),
-  playlist:  (_, { id }) => prisma.playlist.findUnique({ where: { id: +id }, include: { songs: true } }),
+  playlist:  (_, { id }) => prisma.playlist.findUnique({ where: { id: +id }, include: { songs: { include: songInclude } } }),
 
   reviews:   (_, { songId }) => prisma.review.findMany({ where: { songId: +songId }, include: { song: true } }),
 };
