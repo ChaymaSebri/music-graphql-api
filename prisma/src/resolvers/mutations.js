@@ -76,56 +76,10 @@ module.exports = {
     }
   },
   deleteGenre: async (_, { id }) => {
-    const genreId = await assertExists(prisma.genre, id, 'Genre');
+    await assertExists(prisma.genre, id, 'Genre');
 
     try {
-      await prisma.$transaction(async (tx) => {
-        // Get all songs in this genre
-        const songs = await tx.song.findMany({
-          where: { genreId },
-          select: { id: true },
-        });
-
-        // Delete reviews for all songs in this genre
-        const songIds = songs.map(s => s.id);
-        if (songIds.length > 0) {
-          await tx.review.deleteMany({ where: { songId: { in: songIds } } });
-
-          // Remove all songs in this genre from playlists
-          const playlistsWithSongs = await tx.playlist.findMany({
-            where: { songs: { some: { id: { in: songIds } } } },
-            select: { id: true },
-          });
-
-          for (const playlist of playlistsWithSongs) {
-            await tx.playlist.update({
-              where: { id: playlist.id },
-              data: { songs: { disconnect: songIds.map(id => ({ id })) } },
-            });
-          }
-
-          // Delete all songs in this genre
-          await tx.song.deleteMany({ where: { genreId } });
-        }
-
-        // Delete all albums by artists in this genre
-        const artists = await tx.artist.findMany({
-          where: { genreId },
-          select: { id: true },
-        });
-        
-        const artistIds = artists.map(a => a.id);
-        if (artistIds.length > 0) {
-          await tx.album.deleteMany({ where: { artistId: { in: artistIds } } });
-        }
-
-        // Delete all artists in this genre
-        await tx.artist.deleteMany({ where: { genreId } });
-
-        // Delete the genre itself
-        await tx.genre.delete({ where: { id: genreId } });
-      });
-
+      await prisma.genre.delete({ where: { id: +id } });
       return true;
     } catch (error) {
       throw formatPrismaError(error);
@@ -177,45 +131,10 @@ module.exports = {
     return prisma.artist.update({ where: { id: +id }, data: updates, include: artistInclude });
   },
   deleteArtist: async (_, { id }) => {
-    const artistId = await assertExists(prisma.artist, id, 'Artist');
+    await assertExists(prisma.artist, id, 'Artist');
 
     try {
-      await prisma.$transaction(async (tx) => {
-        // Get all songs by this artist
-        const songs = await tx.song.findMany({
-          where: { artistId },
-          select: { id: true },
-        });
-
-        // Delete reviews for all songs by this artist
-        const songIds = songs.map(s => s.id);
-        if (songIds.length > 0) {
-          await tx.review.deleteMany({ where: { songId: { in: songIds } } });
-
-          // Remove all songs by this artist from playlists
-          const playlistsWithSongs = await tx.playlist.findMany({
-            where: { songs: { some: { id: { in: songIds } } } },
-            select: { id: true },
-          });
-
-          for (const playlist of playlistsWithSongs) {
-            await tx.playlist.update({
-              where: { id: playlist.id },
-              data: { songs: { disconnect: songIds.map(id => ({ id })) } },
-            });
-          }
-
-          // Delete all songs by this artist
-          await tx.song.deleteMany({ where: { artistId } });
-        }
-
-        // Delete all albums by this artist
-        await tx.album.deleteMany({ where: { artistId } });
-
-        // Delete the artist itself
-        await tx.artist.delete({ where: { id: artistId } });
-      });
-
+      await prisma.artist.delete({ where: { id: +id } });
       return true;
     } catch (error) {
       throw formatPrismaError(error);
@@ -268,42 +187,10 @@ module.exports = {
     return prisma.album.update({ where: { id: +id }, data: updates, include: { artist: true } });
   },
   deleteAlbum: async (_, { id }) => {
-    const albumId = await assertExists(prisma.album, id, 'Album');
+    await assertExists(prisma.album, id, 'Album');
 
     try {
-      await prisma.$transaction(async (tx) => {
-        // Get all songs in this album
-        const songs = await tx.song.findMany({
-          where: { albumId },
-          select: { id: true },
-        });
-
-        // Delete reviews for all songs in this album
-        const songIds = songs.map(s => s.id);
-        if (songIds.length > 0) {
-          await tx.review.deleteMany({ where: { songId: { in: songIds } } });
-
-          // Remove all songs in this album from playlists
-          const playlistsWithSongs = await tx.playlist.findMany({
-            where: { songs: { some: { id: { in: songIds } } } },
-            select: { id: true },
-          });
-
-          for (const playlist of playlistsWithSongs) {
-            await tx.playlist.update({
-              where: { id: playlist.id },
-              data: { songs: { disconnect: songIds.map(id => ({ id })) } },
-            });
-          }
-
-          // Delete all songs in this album
-          await tx.song.deleteMany({ where: { albumId } });
-        }
-
-        // Delete the album itself
-        await tx.album.delete({ where: { id: albumId } });
-      });
-
+      await prisma.album.delete({ where: { id: +id } });
       return true;
     } catch (error) {
       throw formatPrismaError(error);
