@@ -1,0 +1,83 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Genre {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  artists   Artist[]
+  songs     Song[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model Artist {
+  id        Int      @id @default(autoincrement())
+  name      String
+  bio       String?
+  country   String?
+  genreId   Int
+  genre     Genre    @relation(fields: [genreId], references: [id])
+  albums    Album[]
+  songs     Song[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([name, genreId])
+}
+
+model Album {
+  id          Int      @id @default(autoincrement())
+  title       String
+  releaseYear Int
+  coverUrl    String?
+  artistId    Int
+  artist      Artist   @relation(fields: [artistId], references: [id])
+  songs       Song[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  @@unique([title, artistId, releaseYear])
+}
+
+model Song {
+  id          Int        @id @default(autoincrement())
+  title       String
+  duration    Int
+  trackNumber Int?
+  albumId     Int
+  album       Album      @relation(fields: [albumId], references: [id])
+  artistId    Int
+  artist      Artist     @relation(fields: [artistId], references: [id])
+  genreId     Int
+  genre       Genre      @relation(fields: [genreId], references: [id])
+  playlists   Playlist[] @relation("PlaylistSongs")
+  reviews     Review[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @default(now()) @updatedAt
+
+  @@unique([title, albumId, artistId])
+}
+
+model Playlist {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  songs       Song[]   @relation("PlaylistSongs")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+}
+
+model Review {
+  id        Int      @id @default(autoincrement())
+  content   String
+  score     Int
+  songId    Int
+  song      Song     @relation(fields: [songId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
