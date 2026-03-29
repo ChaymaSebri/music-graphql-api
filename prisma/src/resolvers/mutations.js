@@ -209,12 +209,25 @@ module.exports = {
 
     try {
       const song = await prisma.$transaction(async (tx) => {
-        const albumId = await assertExists(tx.album, args.albumId, 'Album');
+        // Album is now optional
+        let albumId = null;
+        if (args.albumId) {
+          albumId = await assertExists(tx.album, args.albumId, 'Album');
+        }
+        
         const artistId = await assertExists(tx.artist, args.artistId, 'Artist');
         const genreId = await assertExists(tx.genre, args.genreId, 'Genre');
 
+        const whereClause = { 
+          title: normalizedTitle, 
+          artistId
+        };
+        if (albumId !== null) {
+          whereClause.albumId = albumId;
+        }
+
         const existingSong = await tx.song.findFirst({
-          where: { title: normalizedTitle, albumId, artistId },
+          where: whereClause,
         });
         if (existingSong) {
           throw new GraphQLError('Song already exists for this artist and album', {
@@ -223,14 +236,14 @@ module.exports = {
         }
 
         let finalTrackNumber = args.trackNumber ?? null;
-        if (finalTrackNumber == null) {
+        if (albumId && finalTrackNumber == null) {
           const lastTrack = await tx.song.findFirst({
             where: { albumId, trackNumber: { not: null } },
             orderBy: { trackNumber: 'desc' },
             select: { trackNumber: true },
           });
           finalTrackNumber = (lastTrack?.trackNumber || 0) + 1;
-        } else {
+        } else if (albumId && finalTrackNumber != null) {
           const existingTrack = await tx.song.findFirst({
             where: { albumId, trackNumber: finalTrackNumber },
             select: { id: true },
@@ -243,17 +256,35 @@ module.exports = {
           }
         }
 
-        return tx.song.create({
-          data: {
-            title: normalizedTitle,
-            duration: args.duration,
-            trackNumber: finalTrackNumber,
-            albumId,
-            artistId,
-            genreId,
-          },
-          include: songInclude,
+        const songData = {
+          title: normalizedTitle,
+          duration: args.duration,
+          trackNumber: finalTrackNumber,
+          artistId,
+          genreId,
+        };
+
+        // Only include albumId if it's not null
+        if (albumId !== null) {
+          songData.albumId = albumId;
+        }
+
+        // Create without include/select, then fetch with proper relations
+        const createdSong = await tx.song.create({
+          data: songData,
         });
+
+        // Fetch with relations
+        const result = await tx.song.findUnique({
+          where: { id: createdSong.id },
+          include: {
+            album: true,
+            artist: true,
+            genre: true,
+          },
+        });
+
+        return result;
       });
 
       pubsub.publish('SONG_ADDED', { songAdded: song });
@@ -275,13 +306,36 @@ module.exports = {
       updates.duration = data.duration;
     }
 
-    return prisma.song.update({ where: { id: +id }, data: updates, include: songInclude });
+    // Get the song first to check if it has an album
+    const song = await prisma.song.findUnique({ where: { id: +id }, select: { albumId: true } });
+    
+    // Update the song
+    const updated = await prisma.song.update({ 
+      where: { id: +id }, 
+      data: updates, 
+    });
+
+    // Fetch with all relations
+    const result = await prisma.song.findUnique({
+      where: { id: +id },
+      include: {
+        album: true,
+        artist: true,
+        genre: true,
+      },
+    });
+
+    return result;
   },
   deleteSong: async (_, { id }) => {
     const songId = await assertExists(prisma.song, id, 'Song');
 
     try {
       await prisma.$transaction(async (tx) => {
+        // Get the song to find its albumId (if any)
+        const song = await tx.song.findUnique({ where: { id: songId }, select: { albumId: true } });
+        const albumId = song?.albumId;
+
         // Delete all reviews associated with this song
         await tx.review.deleteMany({ where: { songId } });
 
@@ -300,6 +354,15 @@ module.exports = {
 
         // Delete the song itself
         await tx.song.delete({ where: { id: songId } });
+
+        // If song belonged to an album, check if it was the last song
+        if (albumId) {
+          const remainingSongs = await tx.song.count({ where: { albumId } });
+          if (remainingSongs === 0) {
+            // Delete the album if it has no more songs
+            await tx.album.delete({ where: { id: albumId } });
+          }
+        }
       });
 
       pubsub.publish('SONG_DELETED', { songDeleted: id });

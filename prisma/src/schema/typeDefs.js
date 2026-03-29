@@ -30,7 +30,7 @@ module.exports = gql`
     title:       String!
     duration:    Int!
     trackNumber: Int
-    album:       Album!
+    album:       Album
     artist:      Artist!
     genre:       Genre!
     reviews:     [Review!]
@@ -82,7 +82,7 @@ module.exports = gql`
     updateAlbum(id: ID!, title: String, releaseYear: Int): Album!
     deleteAlbum(id: ID!): Boolean!
 
-    addSong(title: String!, duration: Int!, albumId: ID!, artistId: ID!, genreId: ID!, trackNumber: Int): Song!
+    addSong(title: String!, duration: Int!, albumId: ID, artistId: ID!, genreId: ID!, trackNumber: Int): Song!
     updateSong(id: ID!, title: String, duration: Int): Song!
     deleteSong(id: ID!): Boolean!
 

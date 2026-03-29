@@ -26,19 +26,20 @@ Cette phase valide les fondamentaux GraphQL:
 - Un genre contient plusieurs artistes et songs
 - Un artiste appartient a un genre et possede des albums/songs
 - Un album appartient a un artiste et contient des songs
-- Une song appartient a un album, un artiste et un genre
+- Une song appartient a un artiste et un genre (album OPTIONNEL)
 - Une playlist contient plusieurs songs (many-to-many)
 - Une review appartient a une song
+- **AUTO-CLEANUP**: Quand la derniere song d'un album est supprimee, l'album est auto-supprime
 
 ### 2.2 Validation metier implementee
 - Protection contre les doublons:
   - Artist: name + genreId
   - Album: title + artistId + releaseYear
-  - Song: title + albumId + artistId
+  - Song: title + albumId + artistId (albumId peut etre NULL - permettant songs sans album)
 - Champs texte obligatoires non vides
 - score de review entre 1 et 10
 - duration positive
-- trackNumber positif si fourni
+- trackNumber positif si fourni (seul si albumId est fourni)
 - Erreurs GraphQL explicites pour conflits/contraintes
 
 ### 2.3 Temps reel
@@ -325,6 +326,20 @@ mutation AddSong {
     title
     duration
     trackNumber
+    album { id title }
+  }
+}
+```
+
+Variante sans album (optionnel):
+
+```graphql
+mutation AddSongWithoutAlbum {
+  addSong(title: "Independent Song", duration: 210, artistId: "1", genreId: "1") {
+    id
+    title
+    duration
+    album
   }
 }
 ```
@@ -634,6 +649,135 @@ mutation DeleteMissingReview {
 
 Attendu: message `Review not found for id=...`.
 
+## 5.5 Tests optionnalite album (Phase 2)
+
+Cette section teste la support pour les songs sans album.
+
+### T1. Creer une song SANS album
+
+```graphql
+mutation CreateSongNoAlbum {
+  addSong(
+    title: "Independent Song"
+    duration: 180
+    artistId: "1"
+    genreId: "1"
+  ) {
+    id
+    title
+    duration
+    artist { id name }
+    album { id title }
+  }
+}
+```
+
+Attendu: Success. `album: null`.
+
+### T2. Creer une song AVEC album
+
+```graphql
+mutation CreateSongWithAlbum {
+  addSong(
+    title: "Album Song"
+    duration: 220
+    albumId: "1"
+    artistId: "1"
+    genreId: "1"
+    trackNumber: 1
+  ) {
+    id
+    title
+    duration
+    album { id title }
+    artist { id name }
+  }
+}
+```
+
+Attendu: Success. `album` contient `{ id, title }`.
+
+### T3. Supprimer la derniere song d'un album
+
+1. Verifier combien de songs l'album contient:
+
+```graphql
+query CheckAlbum {
+  album(id: "1") {
+    id
+    title
+    songs { id title }
+  }
+}
+```
+
+2. Ajouter une song a cet album (pour tester):
+
+```graphql
+mutation AddSongToAlbum {
+  addSong(
+    title: "Last Song in Album"
+    duration: 200
+    albumId: "1"
+    artistId: "1"
+    genreId: "1"
+  ) {
+    id
+    title
+  }
+}
+```
+
+3. Supprimer cette song (si c'est la derniere):
+
+```graphql
+mutation DeleteLastSongAutoDeletesAlbum {
+  deleteSong(id: "SONG_ID")
+}
+```
+
+4. Verifier que l'album a ete supprime:
+
+```graphql
+query CheckAlbumDeleted {
+  album(id: "1") {
+    id
+    title
+  }
+}
+```
+
+Attendu: Album retourne `null` (supprime automatiquement).
+
+### T4. Supprimer une song sans album
+
+1. Creer une song sans album:
+
+```graphql
+mutation CreateOrphanSong {
+  addSong(
+    title: "Orphan Song"
+    duration: 190
+    artistId: "1"
+    genreId: "1"
+  ) {
+    id
+    title
+    album { id }
+  }
+}
+```
+
+2. La supprimer:
+
+```graphql
+mutation DeleteOrphanSong {
+  deleteSong(id: "SONG_ID")
+}
+```
+
+Attendu: Success. Seule la song est supprimee, pas d'effet de bord.
+
 ## 6. Criteres de validation finale Phase 1
 
 La Phase 1 est consideree fonctionnelle si:
@@ -642,6 +786,8 @@ La Phase 1 est consideree fonctionnelle si:
 - Les subscriptions recoivent les evenements en temps reel
 - Les validations bloquent les cas invalides
 - Le seed se termine correctement
+- **Songs peuvent exister sans album** (album optionnel)
+- **Auto-deletion**: Supprimer la derniere song d'un album supprime aussi l'album
 
 ## 7. Commandes utiles
 
