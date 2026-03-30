@@ -23,8 +23,8 @@ Cette phase valide les fondamentaux GraphQL:
 ## 2. Ce que couvre ce projet
 
 ### 2.1 Modelisation des donnees
-- Un genre contient plusieurs artistes et songs
-- Un artiste appartient a un genre et possede des albums/songs
+- Un genre contient plusieurs songs
+- Un artiste possede des albums/songs
 - Un album appartient a un artiste et contient des songs
 - Une song appartient a un artiste et un genre (album OPTIONNEL)
 - Une playlist contient plusieurs songs (many-to-many)
@@ -33,7 +33,7 @@ Cette phase valide les fondamentaux GraphQL:
 
 ### 2.2 Validation metier implementee
 - Protection contre les doublons:
-  - Artist: name + genreId
+  - Artist: name
   - Album: title + artistId + releaseYear
   - Song: title + albumId + artistId (albumId peut etre NULL - permettant songs sans album)
 - Champs texte obligatoires non vides
@@ -73,14 +73,20 @@ npm install
 En environnement non interactif (recommande ici):
 
 ```bash
+npx prisma migrate deploy
 npx prisma generate
-npx prisma db push --accept-data-loss
 ```
 
 Option migration interactive (si terminal local interactif):
 
 ```bash
-npx prisma migrate dev --name phase1_enhancements
+npx prisma migrate dev --name artist_without_genre
+```
+
+Option reset complet (dev uniquement, supprime toutes les donnees):
+
+```bash
+npx prisma migrate reset --force
 ```
 
 ### 4.4 Alimenter la base
@@ -125,7 +131,6 @@ query GetArtists {
     id
     name
     country
-    genre { id name }
   }
 }
 ```
@@ -139,7 +144,6 @@ query GetArtistById {
     name
     bio
     country
-    genre { id name }
     albums { id title releaseYear }
     songs { id title }
   }
@@ -270,11 +274,10 @@ mutation AddGenre {
 
 ```graphql
 mutation AddArtist {
-  addArtist(name: "Test Artist", country: "MA", bio: "Demo artist", genreId: "1") {
+  addArtist(name: "Test Artist", country: "MA", bio: "Demo artist") {
     id
     name
     country
-    genre { id name }
   }
 }
 ```
@@ -482,7 +485,6 @@ subscription OnArtistAdded {
   artistAdded {
     id
     name
-    genre { id name }
   }
 }
 ```
@@ -515,7 +517,7 @@ Pour tous les tests ci-dessous, le resultat attendu est:
 
 ```graphql
 mutation DuplicateArtist {
-  addArtist(name: "Test Artist", country: "MA", bio: "dup", genreId: "1") {
+  addArtist(name: "Test Artist", country: "MA", bio: "dup") {
     id
   }
 }
@@ -563,7 +565,7 @@ Attendu: message indiquant duration positive.
 
 ```graphql
 mutation EmptyName {
-  addArtist(name: "   ", genreId: "1") {
+  addArtist(name: "   ") {
     id
   }
 }
@@ -571,11 +573,11 @@ mutation EmptyName {
 
 Attendu: message indiquant nom non vide.
 
-### V6. ID de genre inexistant
+### V6. ID de genre inexistant (sur song)
 
 ```graphql
 mutation GenreNotFound {
-  addArtist(name: "Ghost Artist", genreId: "999999") {
+  addSong(title: "Ghost Song", duration: 180, artistId: "1", genreId: "999999") {
     id
   }
 }
@@ -796,5 +798,6 @@ npm start
 npm run seed
 npm run studio
 npx prisma generate
-npx prisma db push --accept-data-loss
+npx prisma migrate deploy
+npx prisma migrate reset --force
 ```

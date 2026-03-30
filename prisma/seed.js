@@ -63,7 +63,7 @@ async function main() {
       console.log(`  Artiste: ${mbArtist.name}`);
 
       const existingArtist = await prisma.artist.findFirst({
-        where: { name: mbArtist.name, genreId },
+        where: { name: mbArtist.name },
       });
       const artist = existingArtist
         ? await prisma.artist.update({
@@ -78,7 +78,6 @@ async function main() {
               name: mbArtist.name,
               country: mbArtist.country || null,
               bio: mbArtist.disambiguation || null,
-              genreId,
             },
           });
 

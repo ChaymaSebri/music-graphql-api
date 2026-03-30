@@ -1,13 +1,13 @@
 const { prisma } = require('../db');
 
-const artistInclude = { genre: true, albums: true, songs: true };
+const artistInclude = { albums: true, songs: true };
 const songInclude   = { album: true, artist: true, genre: true, reviews: true };
 const albumInclude  = { artist: true, songs: true };
 
 module.exports = {
   genres:    () => prisma.genre.findMany(),
 
-  artists:   () => prisma.artist.findMany({ include: { genre: true } }),
+  artists:   () => prisma.artist.findMany(),
   artist:    (_, { id }) => prisma.artist.findUnique({ where: { id: +id }, include: artistInclude }),
 
   albums:    () => prisma.album.findMany({ include: albumInclude }),

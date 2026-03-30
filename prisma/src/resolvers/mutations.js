@@ -3,7 +3,6 @@ const { pubsub }  = require('../pubsub');
 const { GraphQLError } = require('graphql');
 
 const songInclude   = { album: true, artist: true, genre: true };
-const artistInclude = { genre: true };
 
 function trimOrNull(value) {
   if (value == null) return null;
@@ -89,14 +88,13 @@ module.exports = {
   // ── Artist ──
   addArtist: async (_, args) => {
     assertNonEmptyString(args.name, 'name');
-    const genreId = await assertExists(prisma.genre, args.genreId, 'Genre');
 
     const normalizedName = args.name.trim();
     const existingArtist = await prisma.artist.findFirst({
-      where: { name: normalizedName, genreId },
+      where: { name: normalizedName },
     });
     if (existingArtist) {
-      throw new GraphQLError('Artist already exists in this genre', {
+      throw new GraphQLError('Artist already exists', {
         extensions: { code: 'BAD_USER_INPUT' },
       });
     }
@@ -107,9 +105,7 @@ module.exports = {
           name: normalizedName,
           country: trimOrNull(args.country),
           bio: trimOrNull(args.bio),
-          genreId,
         },
-        include: artistInclude,
       });
       pubsub.publish('ARTIST_ADDED', { artistAdded: artist });
       return artist;
@@ -128,7 +124,7 @@ module.exports = {
     if (data.country !== undefined) updates.country = trimOrNull(data.country);
     if (data.bio !== undefined) updates.bio = trimOrNull(data.bio);
 
-    return prisma.artist.update({ where: { id: +id }, data: updates, include: artistInclude });
+    return prisma.artist.update({ where: { id: +id }, data: updates });
   },
   deleteArtist: async (_, { id }) => {
     await assertExists(prisma.artist, id, 'Artist');

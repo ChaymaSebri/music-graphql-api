@@ -11,7 +11,6 @@ module.exports = gql`
     name:    String!
     bio:     String
     country: String
-    genre:   Genre!
     albums:  [Album!]
     songs:   [Song!]
   }
@@ -74,7 +73,7 @@ module.exports = gql`
     addGenre(name: String!): Genre!
     deleteGenre(id: ID!): Boolean!
 
-    addArtist(name: String!, country: String, bio: String, genreId: ID!): Artist!
+    addArtist(name: String!, country: String, bio: String): Artist!
     updateArtist(id: ID!, name: String, country: String, bio: String):    Artist!
     deleteArtist(id: ID!): Boolean!
 
