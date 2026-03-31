@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test tests/**/*.test.js",
     "start": "node prisma/src/index.js",
     "seed": "node prisma/seed.js",
     "studio": "npx prisma studio"
@@ -18,12 +18,17 @@
     "@graphql-tools/schema": "^10.0.31",
     "@prisma/adapter-pg": "^7.6.0",
     "@prisma/client": "^7.6.0",
+    "dataloader": "^2.2.3",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "graphql": "^16.13.2",
+    "graphql-middleware": "^6.1.35",
+    "graphql-scalars": "^1.25.0",
+    "graphql-shield": "^7.6.5",
     "graphql-subscriptions": "^3.0.0",
     "graphql-tag": "^2.12.6",
     "graphql-ws": "^6.0.8",
+    "jsonwebtoken": "^9.0.3",
     "pg": "^8.20.0",
     "prisma": "^7.6.0",
     "ws": "^8.20.0"

@@ -2,8 +2,6 @@ const { prisma }  = require('../db');
 const { pubsub }  = require('../pubsub');
 const { GraphQLError } = require('graphql');
 
-const songInclude   = { album: true, artist: true, genre: true };
-
 function trimOrNull(value) {
   if (value == null) return null;
   const trimmed = String(value).trim();
@@ -34,6 +32,31 @@ function assertPositiveInt(value, fieldName) {
   }
 }
 
+function parsePositiveId(value, fieldName) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new GraphQLError(`${fieldName} must be a positive integer`, {
+      extensions: { code: 'BAD_USER_INPUT' },
+    });
+  }
+  return parsed;
+}
+
+function requireAuth(user) {
+  if (!user) {
+    throw new GraphQLError('Authentication required', {
+      extensions: { code: 'UNAUTHENTICATED' },
+    });
+  }
+}
+
+function withAuth(resolver) {
+  return async (parent, args, context, info) => {
+    requireAuth(context?.user);
+    return resolver(parent, args, context, info);
+  };
+}
+
 function formatPrismaError(error) {
   if (error && error.code === 'P2002') {
     return new GraphQLError('This record already exists', {
@@ -41,8 +64,29 @@ function formatPrismaError(error) {
     });
   }
 
+  if (error && error.code === 'P2025') {
+    return new GraphQLError('The record you are trying to access does not exist', {
+      extensions: { code: 'BAD_USER_INPUT' },
+    });
+  }
+
   if (error && error.code === 'P2003') {
-    return new GraphQLError('Cannot delete this record because it is still referenced', {
+    const rawFieldName = String(error?.meta?.field_name || error?.meta?.fieldName || '').toLowerCase();
+
+    let message = 'Cannot perform operation because a referenced record does not exist';
+    if (rawFieldName.includes('artistid')) {
+      message = 'The specified artist does not exist';
+    } else if (rawFieldName.includes('genreid')) {
+      message = 'The specified genre does not exist';
+    } else if (rawFieldName.includes('albumid')) {
+      message = 'The specified album does not exist';
+    } else if (rawFieldName.includes('songid')) {
+      message = 'The specified song does not exist';
+    } else if (rawFieldName.includes('playlistid')) {
+      message = 'The specified playlist does not exist';
+    }
+
+    return new GraphQLError(message, {
       extensions: { code: 'BAD_USER_INPUT' },
     });
   }
@@ -50,35 +94,21 @@ function formatPrismaError(error) {
   return error;
 }
 
-async function assertExists(model, id, entityName) {
-  const numericId = +id;
-  const row = await model.findUnique({ where: { id: numericId } });
-
-  if (!row) {
-    throw new GraphQLError(`${entityName} not found for id=${id}`, {
-      extensions: { code: 'BAD_USER_INPUT' },
-    });
-  }
-
-  return numericId;
-}
-
-module.exports = {
+const mutationResolvers = {
   // ── Genre ──
-  addGenre: async (_, { name }) => {
-    assertNonEmptyString(name, 'name');
+  addGenre: async (_, { input }) => {
+    assertNonEmptyString(input.name, 'name');
 
     try {
-      return await prisma.genre.create({ data: { name: name.trim() } });
+      return await prisma.genre.create({ data: { name: input.name.trim() } });
     } catch (error) {
       throw formatPrismaError(error);
     }
   },
-  deleteGenre: async (_, { id }) => {
-    await assertExists(prisma.genre, id, 'Genre');
-
+  deleteGenre: async (_, { input }) => {
     try {
-      await prisma.genre.delete({ where: { id: +id } });
+      const genreId = parsePositiveId(input.id, 'id');
+      await prisma.genre.delete({ where: { id: genreId } });
       return true;
     } catch (error) {
       throw formatPrismaError(error);
@@ -86,25 +116,17 @@ module.exports = {
   },
 
   // ── Artist ──
-  addArtist: async (_, args) => {
-    assertNonEmptyString(args.name, 'name');
+  addArtist: async (_, { input }) => {
+    assertNonEmptyString(input.name, 'name');
 
-    const normalizedName = args.name.trim();
-    const existingArtist = await prisma.artist.findFirst({
-      where: { name: normalizedName },
-    });
-    if (existingArtist) {
-      throw new GraphQLError('Artist already exists', {
-        extensions: { code: 'BAD_USER_INPUT' },
-      });
-    }
+    const normalizedName = input.name.trim();
 
     try {
       const artist = await prisma.artist.create({
         data: {
           name: normalizedName,
-          country: trimOrNull(args.country),
-          bio: trimOrNull(args.bio),
+          country: trimOrNull(input.country),
+          bio: trimOrNull(input.bio),
         },
       });
       pubsub.publish('ARTIST_ADDED', { artistAdded: artist });
@@ -113,24 +135,26 @@ module.exports = {
       throw formatPrismaError(error);
     }
   },
-  updateArtist: async (_, { id, ...data }) => {
-    await assertExists(prisma.artist, id, 'Artist');
-
+  updateArtist: async (_, { input }) => {
+    const artistId = parsePositiveId(input.id, 'id');
     const updates = {};
-    if (data.name !== undefined) {
-      assertNonEmptyString(data.name, 'name');
-      updates.name = data.name.trim();
+    if (input.name !== undefined) {
+      assertNonEmptyString(input.name, 'name');
+      updates.name = input.name.trim();
     }
-    if (data.country !== undefined) updates.country = trimOrNull(data.country);
-    if (data.bio !== undefined) updates.bio = trimOrNull(data.bio);
-
-    return prisma.artist.update({ where: { id: +id }, data: updates });
-  },
-  deleteArtist: async (_, { id }) => {
-    await assertExists(prisma.artist, id, 'Artist');
+    if (input.country !== undefined) updates.country = trimOrNull(input.country);
+    if (input.bio !== undefined) updates.bio = trimOrNull(input.bio);
 
     try {
-      await prisma.artist.delete({ where: { id: +id } });
+      return await prisma.artist.update({ where: { id: artistId }, data: updates });
+    } catch (error) {
+      throw formatPrismaError(error);
+    }
+  },
+  deleteArtist: async (_, { input }) => {
+    try {
+      const artistId = parsePositiveId(input.id, 'id');
+      await prisma.artist.delete({ where: { id: artistId } });
       return true;
     } catch (error) {
       throw formatPrismaError(error);
@@ -138,55 +162,48 @@ module.exports = {
   },
 
   // ── Album ──
-  addAlbum: async (_, args) => {
-    assertNonEmptyString(args.title, 'title');
-    assertIntRange(args.releaseYear, 'releaseYear', 1900, new Date().getFullYear() + 1);
-    const artistId = await assertExists(prisma.artist, args.artistId, 'Artist');
+  addAlbum: async (_, { input }) => {
+    assertNonEmptyString(input.title, 'title');
+    assertIntRange(input.releaseYear, 'releaseYear', 1900, new Date().getFullYear() + 1);
+    const artistId = parsePositiveId(input.artistId, 'artistId');
 
-    const normalizedTitle = args.title.trim();
-    const existingAlbum = await prisma.album.findFirst({
-      where: { title: normalizedTitle, artistId, releaseYear: args.releaseYear },
-    });
-    if (existingAlbum) {
-      throw new GraphQLError('Album already exists for this artist and release year', {
-        extensions: { code: 'BAD_USER_INPUT' },
-      });
-    }
+    const normalizedTitle = input.title.trim();
 
     try {
       return await prisma.album.create({
         data: {
           title: normalizedTitle,
-          releaseYear: args.releaseYear,
+          releaseYear: input.releaseYear,
           artistId,
-          coverUrl: trimOrNull(args.coverUrl),
+          coverUrl: trimOrNull(input.coverUrl),
         },
-        include: { artist: true, songs: true },
       });
     } catch (error) {
       throw formatPrismaError(error);
     }
   },
-  updateAlbum: async (_, { id, ...data }) => {
-    await assertExists(prisma.album, id, 'Album');
-
+  updateAlbum: async (_, { input }) => {
+    const albumId = parsePositiveId(input.id, 'id');
     const updates = {};
-    if (data.title !== undefined) {
-      assertNonEmptyString(data.title, 'title');
-      updates.title = data.title.trim();
+    if (input.title !== undefined) {
+      assertNonEmptyString(input.title, 'title');
+      updates.title = input.title.trim();
     }
-    if (data.releaseYear !== undefined) {
-      assertIntRange(data.releaseYear, 'releaseYear', 1900, new Date().getFullYear() + 1);
-      updates.releaseYear = data.releaseYear;
+    if (input.releaseYear !== undefined) {
+      assertIntRange(input.releaseYear, 'releaseYear', 1900, new Date().getFullYear() + 1);
+      updates.releaseYear = input.releaseYear;
     }
-
-    return prisma.album.update({ where: { id: +id }, data: updates, include: { artist: true } });
-  },
-  deleteAlbum: async (_, { id }) => {
-    await assertExists(prisma.album, id, 'Album');
 
     try {
-      await prisma.album.delete({ where: { id: +id } });
+      return await prisma.album.update({ where: { id: albumId }, data: updates });
+    } catch (error) {
+      throw formatPrismaError(error);
+    }
+  },
+  deleteAlbum: async (_, { input }) => {
+    try {
+      const albumId = parsePositiveId(input.id, 'id');
+      await prisma.album.delete({ where: { id: albumId } });
       return true;
     } catch (error) {
       throw formatPrismaError(error);
@@ -194,25 +211,25 @@ module.exports = {
   },
 
   // ── Song ──
-  addSong: async (_, args) => {
-    assertNonEmptyString(args.title, 'title');
-    assertPositiveInt(args.duration, 'duration');
-    if (args.trackNumber !== undefined && args.trackNumber !== null) {
-      assertPositiveInt(args.trackNumber, 'trackNumber');
+  addSong: async (_, { input }) => {
+    assertNonEmptyString(input.title, 'title');
+    assertPositiveInt(input.duration, 'duration');
+    if (input.trackNumber !== undefined && input.trackNumber !== null) {
+      assertPositiveInt(input.trackNumber, 'trackNumber');
     }
 
-    const normalizedTitle = args.title.trim();
+    const normalizedTitle = input.title.trim();
 
     try {
       const song = await prisma.$transaction(async (tx) => {
         // Album is now optional
         let albumId = null;
-        if (args.albumId) {
-          albumId = await assertExists(tx.album, args.albumId, 'Album');
+        if (input.albumId != null) {
+          albumId = parsePositiveId(input.albumId, 'albumId');
         }
-        
-        const artistId = await assertExists(tx.artist, args.artistId, 'Artist');
-        const genreId = await assertExists(tx.genre, args.genreId, 'Genre');
+
+        const artistId = parsePositiveId(input.artistId, 'artistId');
+        const genreId = parsePositiveId(input.genreId, 'genreId');
 
         const whereClause = { 
           title: normalizedTitle, 
@@ -231,7 +248,7 @@ module.exports = {
           });
         }
 
-        let finalTrackNumber = args.trackNumber ?? null;
+        let finalTrackNumber = input.trackNumber ?? null;
         if (albumId && finalTrackNumber == null) {
           const lastTrack = await tx.song.findFirst({
             where: { albumId, trackNumber: { not: null } },
@@ -254,7 +271,7 @@ module.exports = {
 
         const songData = {
           title: normalizedTitle,
-          duration: args.duration,
+          duration: input.duration,
           trackNumber: finalTrackNumber,
           artistId,
           genreId,
@@ -265,22 +282,12 @@ module.exports = {
           songData.albumId = albumId;
         }
 
-        // Create without include/select, then fetch with proper relations
+        // Return base song row; relations are resolved lazily via field resolvers + DataLoader.
         const createdSong = await tx.song.create({
           data: songData,
         });
 
-        // Fetch with relations
-        const result = await tx.song.findUnique({
-          where: { id: createdSong.id },
-          include: {
-            album: true,
-            artist: true,
-            genre: true,
-          },
-        });
-
-        return result;
+        return createdSong;
       });
 
       pubsub.publish('SONG_ADDED', { songAdded: song });
@@ -289,42 +296,30 @@ module.exports = {
       throw formatPrismaError(error);
     }
   },
-  updateSong: async (_, { id, ...data }) => {
-    await assertExists(prisma.song, id, 'Song');
-
+  updateSong: async (_, { input }) => {
+    const songId = parsePositiveId(input.id, 'id');
     const updates = {};
-    if (data.title !== undefined) {
-      assertNonEmptyString(data.title, 'title');
-      updates.title = data.title.trim();
+    if (input.title !== undefined) {
+      assertNonEmptyString(input.title, 'title');
+      updates.title = input.title.trim();
     }
-    if (data.duration !== undefined) {
-      assertPositiveInt(data.duration, 'duration');
-      updates.duration = data.duration;
+    if (input.duration !== undefined) {
+      assertPositiveInt(input.duration, 'duration');
+      updates.duration = input.duration;
     }
 
-    // Get the song first to check if it has an album
-    const song = await prisma.song.findUnique({ where: { id: +id }, select: { albumId: true } });
-    
-    // Update the song
-    const updated = await prisma.song.update({ 
-      where: { id: +id }, 
-      data: updates, 
-    });
-
-    // Fetch with all relations
-    const result = await prisma.song.findUnique({
-      where: { id: +id },
-      include: {
-        album: true,
-        artist: true,
-        genre: true,
-      },
-    });
-
-    return result;
+    try {
+      // Return the updated base song row; relations are resolved lazily via field resolvers.
+      return await prisma.song.update({
+        where: { id: songId },
+        data: updates,
+      });
+    } catch (error) {
+      throw formatPrismaError(error);
+    }
   },
-  deleteSong: async (_, { id }) => {
-    const songId = await assertExists(prisma.song, id, 'Song');
+  deleteSong: async (_, { input }) => {
+    const songId = parsePositiveId(input.id, 'id');
 
     try {
       await prisma.$transaction(async (tx) => {
@@ -332,23 +327,7 @@ module.exports = {
         const song = await tx.song.findUnique({ where: { id: songId }, select: { albumId: true } });
         const albumId = song?.albumId;
 
-        // Delete all reviews associated with this song
-        await tx.review.deleteMany({ where: { songId } });
-
-        // Remove song from all playlists (find and update each playlist)
-        const playlistsWithSong = await tx.playlist.findMany({
-          where: { songs: { some: { id: songId } } },
-          select: { id: true },
-        });
-        
-        for (const playlist of playlistsWithSong) {
-          await tx.playlist.update({
-            where: { id: playlist.id },
-            data: { songs: { disconnect: { id: songId } } },
-          });
-        }
-
-        // Delete the song itself
+        // Delete the song itself; dependent rows are handled by DB-level cascades.
         await tx.song.delete({ where: { id: songId } });
 
         // If song belonged to an album, check if it was the last song
@@ -361,7 +340,7 @@ module.exports = {
         }
       });
 
-      pubsub.publish('SONG_DELETED', { songDeleted: id });
+      pubsub.publish('SONG_DELETED', { songDeleted: input.id });
       return true;
     } catch (error) {
       throw formatPrismaError(error);
@@ -369,62 +348,77 @@ module.exports = {
   },
 
   // ── Playlist ──
-  addPlaylist: async (_, args) => {
-    assertNonEmptyString(args.name, 'name');
+  addPlaylist: async (_, { input }) => {
+    assertNonEmptyString(input.name, 'name');
 
     try {
       return await prisma.playlist.create({
         data: {
-          name: args.name.trim(),
-          description: trimOrNull(args.description),
+          name: input.name.trim(),
+          description: trimOrNull(input.description),
         },
       });
     } catch (error) {
       throw formatPrismaError(error);
     }
   },
-  addSongToPlaylist: async (_, { playlistId, songId }) => {
-    const safePlaylistId = await assertExists(prisma.playlist, playlistId, 'Playlist');
-    const safeSongId = await assertExists(prisma.song, songId, 'Song');
+  addSongToPlaylist: async (_, { input }) => {
+    const safePlaylistId = parsePositiveId(input.playlistId, 'playlistId');
+    const safeSongId = parsePositiveId(input.songId, 'songId');
 
-    return prisma.playlist.update({
-      where: { id: safePlaylistId },
-      data:  { songs: { connect: { id: safeSongId } } },
-      include: { songs: true },
-    });
+    try {
+      return await prisma.playlist.update({
+        where: { id: safePlaylistId },
+        data:  { songs: { connect: { id: safeSongId } } },
+        include: { songs: true },
+      });
+    } catch (error) {
+      throw formatPrismaError(error);
+    }
   },
-  removeSongFromPlaylist: async (_, { playlistId, songId }) => {
-    const safePlaylistId = await assertExists(prisma.playlist, playlistId, 'Playlist');
-    const safeSongId = await assertExists(prisma.song, songId, 'Song');
+  removeSongFromPlaylist: async (_, { input }) => {
+    const safePlaylistId = parsePositiveId(input.playlistId, 'playlistId');
+    const safeSongId = parsePositiveId(input.songId, 'songId');
 
-    return prisma.playlist.update({
-      where: { id: safePlaylistId },
-      data:  { songs: { disconnect: { id: safeSongId } } },
-      include: { songs: true },
-    });
+    try {
+      return await prisma.playlist.update({
+        where: { id: safePlaylistId },
+        data:  { songs: { disconnect: { id: safeSongId } } },
+        include: { songs: true },
+      });
+    } catch (error) {
+      throw formatPrismaError(error);
+    }
   },
 
   // ── Review ──
-  addReview: async (_, args) => {
-    assertNonEmptyString(args.content, 'content');
-    assertIntRange(args.score, 'score', 1, 10);
-    const songId = await assertExists(prisma.song, args.songId, 'Song');
-
-    const review = await prisma.review.create({
-      data: { content: args.content.trim(), score: args.score, songId },
-      include: { song: true },
-    });
-    pubsub.publish('REVIEW_ADDED', { reviewAdded: review });
-    return review;
-  },
-  deleteReview: async (_, { id }) => {
-    await assertExists(prisma.review, id, 'Review');
+  addReview: async (_, { input }) => {
+    assertNonEmptyString(input.content, 'content');
+    assertIntRange(input.score, 'score', 1, 10);
+    const songId = parsePositiveId(input.songId, 'songId');
 
     try {
-      await prisma.review.delete({ where: { id: +id } });
+      const review = await prisma.review.create({
+        data: { content: input.content.trim(), score: input.score, songId },
+        include: { song: true },
+      });
+      pubsub.publish('REVIEW_ADDED', { reviewAdded: review });
+      return review;
+    } catch (error) {
+      throw formatPrismaError(error);
+    }
+  },
+  deleteReview: async (_, { input }) => {
+    try {
+      const reviewId = parsePositiveId(input.id, 'id');
+      await prisma.review.delete({ where: { id: reviewId } });
       return true;
     } catch (error) {
       throw formatPrismaError(error);
     }
   },
 };
+
+module.exports = Object.fromEntries(
+  Object.entries(mutationResolvers).map(([name, resolver]) => [name, withAuth(resolver)]),
+);

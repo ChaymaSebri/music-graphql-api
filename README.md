@@ -10,6 +10,8 @@ API GraphQL autour du domaine musique avec les entites suivantes:
 
 Le projet est construit avec Node.js, Apollo Server, Express, Prisma et PostgreSQL.
 
+**Stack complet**: Node.js, Apollo Server 5, Express 5, Prisma 7 (avec @prisma/adapter-pg pour Neon), PostgreSQL, DataLoader 2, graphql-scalars (DateTime).
+
 ## 1. Objectif de la Phase 1
 
 Cette phase valide les fondamentaux GraphQL:
@@ -110,6 +112,58 @@ Endpoints:
 Ouvrir Apollo Sandbox sur:
 http://localhost:4000/graphql
 
+## 5.0 Types de données spécialisées
+
+### DateTime Scalar
+
+Tous les types d'entités (`Genre`, `Artist`, `Album`, `Song`, `Playlist`, `Review`) exposent maintenant 2 champs temporels:
+- **createdAt**: Date/heure de création (ISO 8601)
+- **updatedAt**: Date/heure de dernière modification (ISO 8601)
+
+**Format**: Strings ISO 8601 (ex: `"2026-03-30T10:45:23.123Z"`)
+
+**Utilité**:
+- Afficher "Créé le..." sur l'interface
+- Trier les résultats par date (récemment ajouté, modifié)
+- Log d'audit (qui a agi quand?)
+- Gestion du cache côté client
+
+### Exemple: Récupérer la date d'une review
+
+```graphql
+query ReviewWithDates {
+  reviews(songId: "1") {
+    id
+    content
+    score
+    createdAt
+    updatedAt
+    song { id title }
+  }
+}
+```
+
+**Réponse attendue:**
+```json
+{
+  "data": {
+    "reviews": [
+      {
+        "id": "1",
+        "content": "Great song!",
+        "score": 9,
+        "createdAt": "2026-03-30T10:45:23.123Z",
+        "updatedAt": "2026-03-30T10:45:23.123Z",
+        "song": {
+          "id": "1",
+          "title": "Bohemian Rhapsody"
+        }
+      }
+    ]
+  }
+}
+```
+
 ## 5.1 Queries (lecture)
 
 ### Q1. Genres
@@ -119,6 +173,8 @@ query GetGenres {
   genres {
     id
     name
+    createdAt
+    updatedAt
   }
 }
 ```
@@ -127,7 +183,19 @@ query GetGenres {
 
 ```graphql
 query GetArtists {
-  artists {
+  artists(take: 20, skip: 0, filter: { name: "queen", country: "uk" }) {
+    id
+    name
+    country
+  }
+}
+```
+
+Exemple sans filtre:
+
+```graphql
+query GetArtistsNoFilter {
+  artists(take: 20, skip: 0) {
     id
     name
     country
@@ -183,7 +251,7 @@ query GetAlbumById {
 
 ```graphql
 query GetSongs {
-  songs {
+  songs(take: 20, skip: 0, filter: { artistName: "queen", genreId: "1" }) {
     id
     title
     duration
@@ -191,9 +259,16 @@ query GetSongs {
     artist { id name }
     album { id title }
     genre { id name }
+    createdAt
+    updatedAt
   }
 }
 ```
+
+Autres filtres possibles pour `songs`:
+- `filter: { title: "love" }`
+- `filter: { artistId: "2" }`
+- Combinaison possible avec `take/skip`
 
 ### Q7. Song by ID
 
@@ -207,7 +282,15 @@ query GetSongById {
     artist { id name }
     album { id title }
     genre { id name }
-    reviews { id content score }
+    createdAt
+    updatedAt
+    reviews {
+      id
+      content
+      score
+      createdAt
+      updatedAt
+    }
   }
 }
 ```
@@ -220,6 +303,8 @@ query GetPlaylists {
     id
     name
     description
+    createdAt
+    updatedAt
     songs { id title }
   }
 }
@@ -233,6 +318,8 @@ query GetPlaylistById {
     id
     name
     description
+    createdAt
+    updatedAt
     songs {
       id
       title
@@ -263,7 +350,7 @@ Executer idealement dans cet ordre.
 
 ```graphql
 mutation AddGenre {
-  addGenre(name: "Afrobeat") {
+  addGenre(input: { name: "Afrobeat" }) {
     id
     name
   }
@@ -274,7 +361,7 @@ mutation AddGenre {
 
 ```graphql
 mutation AddArtist {
-  addArtist(name: "Test Artist", country: "MA", bio: "Demo artist") {
+  addArtist(input: { name: "Test Artist", country: "MA", bio: "Demo artist" }) {
     id
     name
     country
@@ -286,7 +373,7 @@ mutation AddArtist {
 
 ```graphql
 mutation UpdateArtist {
-  updateArtist(id: "1", name: "Test Artist Updated", country: "FR", bio: "Updated bio") {
+  updateArtist(input: { id: "1", name: "Test Artist Updated", country: "FR", bio: "Updated bio" }) {
     id
     name
     country
@@ -299,7 +386,7 @@ mutation UpdateArtist {
 
 ```graphql
 mutation AddAlbum {
-  addAlbum(title: "Test Album", releaseYear: 2024, artistId: "1", coverUrl: "https://img.test/cover.jpg") {
+  addAlbum(input: { title: "Test Album", releaseYear: 2024, artistId: "1", coverUrl: "https://img.test/cover.jpg" }) {
     id
     title
     releaseYear
@@ -312,7 +399,7 @@ mutation AddAlbum {
 
 ```graphql
 mutation UpdateAlbum {
-  updateAlbum(id: "1", title: "Test Album Updated", releaseYear: 2025) {
+  updateAlbum(input: { id: "1", title: "Test Album Updated", releaseYear: 2025 }) {
     id
     title
     releaseYear
@@ -324,7 +411,7 @@ mutation UpdateAlbum {
 
 ```graphql
 mutation AddSong {
-  addSong(title: "Test Song", duration: 210, albumId: "1", artistId: "1", genreId: "1", trackNumber: 1) {
+  addSong(input: { title: "Test Song", duration: 210, albumId: "1", artistId: "1", genreId: "1", trackNumber: 1 }) {
     id
     title
     duration
@@ -338,7 +425,7 @@ Variante sans album (optionnel):
 
 ```graphql
 mutation AddSongWithoutAlbum {
-  addSong(title: "Independent Song", duration: 210, artistId: "1", genreId: "1") {
+  addSong(input: { title: "Independent Song", duration: 210, artistId: "1", genreId: "1" }) {
     id
     title
     duration
@@ -351,7 +438,7 @@ mutation AddSongWithoutAlbum {
 
 ```graphql
 mutation UpdateSong {
-  updateSong(id: "1", title: "Test Song Updated", duration: 220) {
+  updateSong(input: { id: "1", title: "Test Song Updated", duration: 220 }) {
     id
     title
     duration
@@ -363,7 +450,7 @@ mutation UpdateSong {
 
 ```graphql
 mutation AddPlaylist {
-  addPlaylist(name: "Phase1 Playlist", description: "Playlist de test") {
+  addPlaylist(input: { name: "Phase1 Playlist", description: "Playlist de test" }) {
     id
     name
     description
@@ -375,7 +462,7 @@ mutation AddPlaylist {
 
 ```graphql
 mutation AddSongToPlaylist {
-  addSongToPlaylist(playlistId: "1", songId: "1") {
+  addSongToPlaylist(input: { playlistId: "1", songId: "1" }) {
     id
     name
     songs { id title }
@@ -387,7 +474,7 @@ mutation AddSongToPlaylist {
 
 ```graphql
 mutation RemoveSongFromPlaylist {
-  removeSongFromPlaylist(playlistId: "1", songId: "1") {
+  removeSongFromPlaylist(input: { playlistId: "1", songId: "1" }) {
     id
     name
     songs { id title }
@@ -399,7 +486,7 @@ mutation RemoveSongFromPlaylist {
 
 ```graphql
 mutation AddReview {
-  addReview(content: "Tres bon morceau", score: 9, songId: "1") {
+  addReview(input: { content: "Tres bon morceau", score: 9, songId: "1" }) {
     id
     content
     score
@@ -412,7 +499,7 @@ mutation AddReview {
 
 ```graphql
 mutation DeleteReview {
-  deleteReview(id: "1")
+  deleteReview(input: { id: "1" })
 }
 ```
 
@@ -420,7 +507,7 @@ mutation DeleteReview {
 
 ```graphql
 mutation DeleteSong {
-  deleteSong(id: "1")
+  deleteSong(input: { id: "1" })
 }
 ```
 
@@ -428,7 +515,7 @@ mutation DeleteSong {
 
 ```graphql
 mutation DeleteAlbum {
-  deleteAlbum(id: "1")
+  deleteAlbum(input: { id: "1" })
 }
 ```
 
@@ -436,7 +523,7 @@ mutation DeleteAlbum {
 
 ```graphql
 mutation DeleteArtist {
-  deleteArtist(id: "1")
+  deleteArtist(input: { id: "1" })
 }
 ```
 
@@ -444,7 +531,7 @@ mutation DeleteArtist {
 
 ```graphql
 mutation DeleteGenre {
-  deleteGenre(id: "1")
+  deleteGenre(input: { id: "1" })
 }
 ```
 
@@ -517,7 +604,7 @@ Pour tous les tests ci-dessous, le resultat attendu est:
 
 ```graphql
 mutation DuplicateArtist {
-  addArtist(name: "Test Artist", country: "MA", bio: "dup") {
+  addArtist(input: { name: "Test Artist", country: "MA", bio: "dup" }) {
     id
   }
 }
@@ -529,7 +616,7 @@ Attendu: message de type "Artist already exists..." ou "This record already exis
 
 ```graphql
 mutation DuplicateSong {
-  addSong(title: "Test Song", duration: 210, albumId: "1", artistId: "1", genreId: "1", trackNumber: 1) {
+  addSong(input: { title: "Test Song", duration: 210, albumId: "1", artistId: "1", genreId: "1", trackNumber: 1 }) {
     id
   }
 }
@@ -541,7 +628,7 @@ Attendu: message de type "Song already exists...".
 
 ```graphql
 mutation BadScore {
-  addReview(content: "bad", score: 11, songId: "1") {
+  addReview(input: { content: "bad", score: 11, songId: "1" }) {
     id
   }
 }
@@ -553,7 +640,7 @@ Attendu: message indiquant score entre 1 et 10.
 
 ```graphql
 mutation BadDuration {
-  addSong(title: "Bad", duration: 0, albumId: "1", artistId: "1", genreId: "1") {
+  addSong(input: { title: "Bad", duration: 0, albumId: "1", artistId: "1", genreId: "1" }) {
     id
   }
 }
@@ -565,7 +652,7 @@ Attendu: message indiquant duration positive.
 
 ```graphql
 mutation EmptyName {
-  addArtist(name: "   ") {
+  addArtist(input: { name: "   " }) {
     id
   }
 }
@@ -577,7 +664,7 @@ Attendu: message indiquant nom non vide.
 
 ```graphql
 mutation GenreNotFound {
-  addSong(title: "Ghost Song", duration: 180, artistId: "1", genreId: "999999") {
+  addSong(input: { title: "Ghost Song", duration: 180, artistId: "1", genreId: "999999" }) {
     id
   }
 }
@@ -589,7 +676,7 @@ Attendu: message `Genre not found for id=...`.
 
 ```graphql
 mutation SongNotFoundForReview {
-  addReview(content: "test", score: 8, songId: "999999") {
+  addReview(input: { content: "test", score: 8, songId: "999999" }) {
     id
   }
 }
@@ -601,7 +688,7 @@ Attendu: message `Song not found for id=...`.
 
 ```graphql
 mutation BadReleaseYear {
-  addAlbum(title: "Old Album", releaseYear: 1500, artistId: "1") {
+  addAlbum(input: { title: "Old Album", releaseYear: 1500, artistId: "1" }) {
     id
   }
 }
@@ -613,7 +700,7 @@ Attendu: message indiquant releaseYear hors intervalle autorise.
 
 ```graphql
 mutation BadTrackNumber {
-  addSong(title: "Track Error", duration: 180, albumId: "1", artistId: "1", genreId: "1", trackNumber: 0) {
+  addSong(input: { title: "Track Error", duration: 180, albumId: "1", artistId: "1", genreId: "1", trackNumber: 0 }) {
     id
   }
 }
@@ -625,7 +712,7 @@ Attendu: message indiquant trackNumber positif.
 
 ```graphql
 mutation DeleteReferencedGenre {
-  deleteGenre(id: "1")
+  deleteGenre(input: { id: "1" })
 }
 ```
 
@@ -635,7 +722,7 @@ Attendu: echec avec message de type "Cannot delete this record because it is sti
 
 ```graphql
 mutation DeleteReferencedArtist {
-  deleteArtist(id: "1")
+  deleteArtist(input: { id: "1" })
 }
 ```
 
@@ -645,7 +732,7 @@ Attendu: echec tant que des albums/songs references existent.
 
 ```graphql
 mutation DeleteMissingReview {
-  deleteReview(id: "999999")
+  deleteReview(input: { id: "999999" })
 }
 ```
 
@@ -659,12 +746,12 @@ Cette section teste la support pour les songs sans album.
 
 ```graphql
 mutation CreateSongNoAlbum {
-  addSong(
+  addSong(input: {
     title: "Independent Song"
     duration: 180
     artistId: "1"
     genreId: "1"
-  ) {
+  }) {
     id
     title
     duration
@@ -680,14 +767,14 @@ Attendu: Success. `album: null`.
 
 ```graphql
 mutation CreateSongWithAlbum {
-  addSong(
+  addSong(input: {
     title: "Album Song"
     duration: 220
     albumId: "1"
     artistId: "1"
     genreId: "1"
     trackNumber: 1
-  ) {
+  }) {
     id
     title
     duration
@@ -717,13 +804,13 @@ query CheckAlbum {
 
 ```graphql
 mutation AddSongToAlbum {
-  addSong(
+  addSong(input: {
     title: "Last Song in Album"
     duration: 200
     albumId: "1"
     artistId: "1"
     genreId: "1"
-  ) {
+  }) {
     id
     title
   }
@@ -734,7 +821,7 @@ mutation AddSongToAlbum {
 
 ```graphql
 mutation DeleteLastSongAutoDeletesAlbum {
-  deleteSong(id: "SONG_ID")
+  deleteSong(input: { id: "SONG_ID" })
 }
 ```
 
@@ -757,12 +844,12 @@ Attendu: Album retourne `null` (supprime automatiquement).
 
 ```graphql
 mutation CreateOrphanSong {
-  addSong(
+  addSong(input: {
     title: "Orphan Song"
     duration: 190
     artistId: "1"
     genreId: "1"
-  ) {
+  }) {
     id
     title
     album { id }
@@ -774,7 +861,7 @@ mutation CreateOrphanSong {
 
 ```graphql
 mutation DeleteOrphanSong {
-  deleteSong(id: "SONG_ID")
+  deleteSong(input: { id: "SONG_ID" })
 }
 ```
 
@@ -790,6 +877,185 @@ La Phase 1 est consideree fonctionnelle si:
 - Le seed se termine correctement
 - **Songs peuvent exister sans album** (album optionnel)
 - **Auto-deletion**: Supprimer la derniere song d'un album supprime aussi l'album
+
+## 6.1 Considérations pour la production
+
+### 6.1.1 Limitation du système de Subscriptions actuel
+
+**État actuel**: Le système de subscriptions utilise un **PubSub en mémoire** (SimplePubSub basé sur EventEmitter).
+
+**Limitation**: Cet approche fonctionne parfaitement en développement local, **mais elle ne fonctionne pas avec la mise à l'échelle horizontale** (multiple serveurs). 
+
+**Pourquoi?**
+- Les événements publiés sur le **serveur A** ne sont vus que par les clients connectés au **serveur A**
+- Les clients connectés au **serveur B** ne reçoivent pas ces événements
+- Chaque serveur a sa propre instance PubSub isolée en mémoire
+
+**Exemple problématique:**
+```
+Serveur A                           Serveur B
+┌─────────────────────┐            ┌─────────────────────┐
+│ Client 1 connecté   │            │ Client 3 connecté   │
+│ ↓                   │            │ ↓                   │
+│ Mutation addSong()  │ ──────────→ │ X Pas d'événement   │
+│ Événement émis ✓    │            │   (autre serveur)   │
+│                     │            │                     │
+│ Client 2 connecté   │            │                     │
+│ Reçoit ✓            │            │                     │
+└─────────────────────┘            └─────────────────────┘
+```
+
+### 6.1.2 Solution pour la production: Redis PubSub
+
+**Recommandation**: Utiliser **graphql-redis-subscriptions** qui centralise les événements via **Redis**.
+
+**Installation:**
+```bash
+npm install graphql-redis-subscriptions redis
+```
+
+**Implémentation (exemple):**
+```javascript
+// prisma/src/pubsub.js (version production)
+const { RedisPubSub } = require('graphql-redis-subscriptions');
+const Redis = require('redis');
+
+const client = Redis.createClient({
+  url: process.env.REDIS_URL || 'redis://localhost:6379',
+  socket: {
+    reconnectStrategy: (retries) => Math.min(retries * 50, 500),
+  },
+});
+
+const pubsub = new RedisPubSub({
+  publisher: client.duplicate(),
+  subscriber: client.duplicate(),
+});
+
+module.exports = { pubsub };
+```
+
+**Avantage de Redis:**
+- ✅ **Scalabilité horizontale**: Tous les serveurs reçoivent les événements via Redis
+- ✅ **Persistance optionnelle**: Les événements peuvent être persistés
+- ✅ **Performance élevée**: Redis est optimisé pour pub/sub haute performance
+- ✅ **Compatible avec la configuration actuelle**: Les appels `pubsub.publish()` restent identiques
+
+**Configuration en production:**
+```bash
+# .env (production)
+REDIS_URL=redis://user:password@redis.example.com:6379
+DATABASE_URL=postgresql://...
+PORT=4000
+```
+
+**Déploiement recommandé:**
+- Redis en tant que service managé (AWS ElastiCache, Azure Cache for Redis, Heroku Redis, etc.)
+- Ou déploiement Redis HA (Replication + Sentinel)
+
+### 6.1.3 Migration progressive
+
+1. **Phase 1 (Actuelle)**: SimplePubSub en mémoire (développement/single-server)
+2. **Phase 2 (Production)**: Redis PubSub (horizontal scaling)
+3. **Phase 3 (Optionnel)**: Événements persistés (EventStore/Kafka) pour audit complet
+
+### 6.1.4 Performance et observabilité
+
+**Monitoré les subscriptions:**
+```bash
+# Vérifier les connexions Redis
+redis-cli
+> PUBSUB CHANNELS          # Canaux actifs
+> PUBSUB NUMPAT            # Nombre de patterns
+```
+
+**Logs recommandés (à ajouter):**
+```javascript
+pubsub.subscribe('SONG_ADDED', (message) => {
+  console.log(`[PubSub] Événement reçu:`, message);
+});
+```
+
+**Problèmes courants et solutions:**
+| Problème | Cause | Solution |
+|----------|-------|----------|
+| Événements perdus | Clients déconnectés | Implémenter message queue durable (RabbitMQ/Kafka) |
+| Latence élevée | Réseau Redis lent | Placer Redis près des serveurs applicatifs |
+| Mémoire Redis saturée | Trop d'événements | Configurer LRU éviction policy ou archiver les anciens |
+
+## 6.2 Sécurisation (préparation Phase 2)
+
+### 6.2.1 Contexte GraphQL enrichi avec l'utilisateur
+
+Le serveur injecte désormais `user` dans le contexte GraphQL pour:
+- les requêtes HTTP
+- les subscriptions WebSocket
+
+Source implémentée:
+- `prisma/src/auth.js`: extraction `Bearer` + vérification JWT
+- `prisma/src/index.js`: injection de `user` dans `context`
+
+Variables d'environnement:
+
+```bash
+JWT_SECRET=your_super_secret_key
+```
+
+Comportement:
+- Si token valide: `context.user` contient `id`, `email`, `role`
+- Si token absent/invalide: `context.user = null`
+
+Exemple HTTP:
+
+```http
+Authorization: Bearer <JWT_TOKEN>
+```
+
+Exemple WebSocket (`connectionParams`):
+
+```json
+{
+  "authorization": "Bearer <JWT_TOKEN>"
+}
+```
+
+Exemple d'usage dans un resolver:
+
+```javascript
+function requireAuth(user) {
+  if (!user) {
+    throw new GraphQLError('Authentication required', {
+      extensions: { code: 'UNAUTHENTICATED' },
+    });
+  }
+}
+
+// resolver
+myPrivateQuery: async (_, __, { user }) => {
+  requireAuth(user);
+  return { ok: true };
+}
+```
+
+### 6.2.2 Permissions avec graphql-shield
+
+Pour structurer les permissions au-dessus des resolvers, `graphql-shield` est recommandé.
+
+Installation:
+
+```bash
+npm install graphql-shield graphql-middleware
+```
+
+Approche cible Phase 2:
+1. Définir des règles (`isAuthenticated`, `isAdmin`, etc.)
+2. Mapper les règles sur `Query`, `Mutation`, `Subscription`
+3. Appliquer la policy à votre schema exécutable
+
+Avantage:
+- Séparation claire entre logique métier et logique d'autorisation
+- Politique globale, homogène, maintenable
+- Réduction du code répétitif dans les resolvers
 
 ## 7. Commandes utiles
 
