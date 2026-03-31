@@ -381,6 +381,29 @@ const mutationResolvers = {
     const safeSongId = parsePositiveId(input.songId, 'songId');
 
     try {
+      const existingLink = await prisma.playlist.findUnique({
+        where: { id: safePlaylistId },
+        select: {
+          id: true,
+          songs: {
+            where: { id: safeSongId },
+            select: { id: true },
+          },
+        },
+      });
+
+      if (!existingLink) {
+        throw new GraphQLError('The specified playlist does not exist', {
+          extensions: { code: 'BAD_USER_INPUT' },
+        });
+      }
+
+      if (!existingLink.songs.length) {
+        throw new GraphQLError('The specified song is not in this playlist', {
+          extensions: { code: 'BAD_USER_INPUT' },
+        });
+      }
+
       return await prisma.playlist.update({
         where: { id: safePlaylistId },
         data:  { songs: { disconnect: { id: safeSongId } } },

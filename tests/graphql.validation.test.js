@@ -131,3 +131,29 @@ test('nested paginated relations use stable orderBy', async () => {
     prisma.song.findMany = originalFindMany;
   }
 });
+
+test('removeSongFromPlaylist rejects song not linked to playlist', async () => {
+  const originalFindUnique = prisma.playlist.findUnique;
+  const originalUpdate = prisma.playlist.update;
+
+  prisma.playlist.findUnique = async () => ({ id: 5, songs: [] });
+  prisma.playlist.update = async () => {
+    throw new Error('update should not be called when song is not linked');
+  };
+
+  try {
+    const result = await graphql({
+      schema,
+      source: 'mutation { removeSongFromPlaylist(input: { playlistId: "5", songId: "14" }) { id } }',
+      contextValue: { user: { id: '1', role: 'ADMIN' } },
+    });
+
+    const error = firstError(result);
+    assert.ok(error);
+    assert.equal(error.extensions.code, 'BAD_USER_INPUT');
+    assert.match(error.message, /song is not in this playlist/i);
+  } finally {
+    prisma.playlist.findUnique = originalFindUnique;
+    prisma.playlist.update = originalUpdate;
+  }
+});
