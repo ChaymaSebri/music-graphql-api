@@ -72,7 +72,29 @@ function formatPrismaError(error) {
 
   if (error && error.code === 'P2003') {
     const rawFieldName = String(error?.meta?.field_name || error?.meta?.fieldName || '').toLowerCase();
+    const cause = String(error?.meta?.cause || '').toLowerCase();
 
+    // Check if this is a delete-blocked scenario (record still referenced by others)
+    if (cause.includes('foreign key') && 
+        (rawFieldName.includes('artist') || cause.includes('artist'))) {
+      return new GraphQLError('Cannot delete this artist because it still has songs or albums. Delete those first.', {
+        extensions: { code: 'BAD_USER_INPUT' },
+      });
+    }
+    if (cause.includes('foreign key') && 
+        (rawFieldName.includes('album') || cause.includes('album'))) {
+      return new GraphQLError('Cannot delete this album because it still has songs. Delete those first.', {
+        extensions: { code: 'BAD_USER_INPUT' },
+      });
+    }
+    if (cause.includes('foreign key') && 
+        (rawFieldName.includes('genre') || cause.includes('genre'))) {
+      return new GraphQLError('Cannot delete this genre because it still has songs. Delete those first.', {
+        extensions: { code: 'BAD_USER_INPUT' },
+      });
+    }
+
+    // Original logic for missing references on INSERT/UPDATE
     let message = 'Cannot perform operation because a referenced record does not exist';
     if (rawFieldName.includes('artistid')) {
       message = 'The specified artist does not exist';
@@ -125,8 +147,6 @@ const mutationResolvers = {
       const artist = await prisma.artist.create({
         data: {
           name: normalizedName,
-          country: trimOrNull(input.country),
-          bio: trimOrNull(input.bio),
         },
       });
       pubsub.publish('ARTIST_ADDED', { artistAdded: artist });
@@ -142,8 +162,6 @@ const mutationResolvers = {
       assertNonEmptyString(input.name, 'name');
       updates.name = input.name.trim();
     }
-    if (input.country !== undefined) updates.country = trimOrNull(input.country);
-    if (input.bio !== undefined) updates.bio = trimOrNull(input.bio);
 
     try {
       return await prisma.artist.update({ where: { id: artistId }, data: updates });
@@ -175,7 +193,6 @@ const mutationResolvers = {
           title: normalizedTitle,
           releaseYear: input.releaseYear,
           artistId,
-          coverUrl: trimOrNull(input.coverUrl),
         },
       });
     } catch (error) {
@@ -214,15 +231,12 @@ const mutationResolvers = {
   addSong: async (_, { input }) => {
     assertNonEmptyString(input.title, 'title');
     assertPositiveInt(input.duration, 'duration');
-    if (input.trackNumber !== undefined && input.trackNumber !== null) {
-      assertPositiveInt(input.trackNumber, 'trackNumber');
-    }
 
     const normalizedTitle = input.title.trim();
 
     try {
       const song = await prisma.$transaction(async (tx) => {
-        // Album is now optional
+        // Album is optional
         let albumId = null;
         if (input.albumId != null) {
           albumId = parsePositiveId(input.albumId, 'albumId');
@@ -248,31 +262,9 @@ const mutationResolvers = {
           });
         }
 
-        let finalTrackNumber = input.trackNumber ?? null;
-        if (albumId && finalTrackNumber == null) {
-          const lastTrack = await tx.song.findFirst({
-            where: { albumId, trackNumber: { not: null } },
-            orderBy: { trackNumber: 'desc' },
-            select: { trackNumber: true },
-          });
-          finalTrackNumber = (lastTrack?.trackNumber || 0) + 1;
-        } else if (albumId && finalTrackNumber != null) {
-          const existingTrack = await tx.song.findFirst({
-            where: { albumId, trackNumber: finalTrackNumber },
-            select: { id: true },
-          });
-
-          if (existingTrack) {
-            throw new GraphQLError(`trackNumber ${finalTrackNumber} already exists in this album`, {
-              extensions: { code: 'BAD_USER_INPUT' },
-            });
-          }
-        }
-
         const songData = {
           title: normalizedTitle,
           duration: input.duration,
-          trackNumber: finalTrackNumber,
           artistId,
           genreId,
         };
@@ -306,6 +298,11 @@ const mutationResolvers = {
     if (input.duration !== undefined) {
       assertPositiveInt(input.duration, 'duration');
       updates.duration = input.duration;
+    }
+    if (Object.keys(updates).length === 0) {
+      throw new GraphQLError('At least one field must be updated', {
+        extensions: { code: 'BAD_USER_INPUT' },
+      });
     }
 
     try {

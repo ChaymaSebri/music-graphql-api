@@ -17,8 +17,6 @@ model Genre {
 model Artist {
   id        Int      @id @default(autoincrement())
   name      String
-  bio       String?
-  country   String?
   albums    Album[]
   songs     Song[]
   createdAt DateTime @default(now())
@@ -31,7 +29,6 @@ model Album {
   id          Int      @id @default(autoincrement())
   title       String
   releaseYear Int
-  coverUrl    String?
   artistId    Int
   artist      Artist   @relation(fields: [artistId], references: [id])
   songs       Song[]
@@ -45,20 +42,20 @@ model Song {
   id          Int        @id @default(autoincrement())
   title       String
   duration    Int
-  trackNumber Int?
   albumId     Int?
   album       Album?     @relation(fields: [albumId], references: [id])
   artistId    Int
   artist      Artist     @relation(fields: [artistId], references: [id])
   genreId     Int
   genre       Genre      @relation(fields: [genreId], references: [id])
+  explicit    Boolean?
+  popularity  Int?
   playlists   Playlist[] @relation("PlaylistSongs")
   reviews     Review[]
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @default(now()) @updatedAt
 
   @@unique([title, albumId, artistId])
-  @@unique([albumId, trackNumber])
 }
 
 model Playlist {

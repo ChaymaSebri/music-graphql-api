@@ -3,7 +3,7 @@ const { GraphQLError } = require('graphql');
 
 const DEFAULT_TAKE = 50;
 const MAX_TAKE = 100;
-const STABLE_ORDER_BY = [{ createdAt: 'desc' }, { id: 'desc' }];
+const STABLE_ORDER_BY = [{ createdAt: 'asc' }, { id: 'asc' }];
 
 function getPaginationArgs(args = {}) {
   const take = args.take == null ? DEFAULT_TAKE : args.take;
@@ -146,4 +146,13 @@ module.exports = {
     const { take, skip } = getPaginationArgs(args);
     return prisma.review.findMany({ where: { songId }, take, skip, orderBy: STABLE_ORDER_BY });
   },
+
+  stats: async () => ({
+    genres: await prisma.genre.count(),
+    artists: await prisma.artist.count(),
+    albums: await prisma.album.count(),
+    songs: await prisma.song.count(),
+    playlists: await prisma.playlist.count(),
+    reviews: await prisma.review.count(),
+  }),
 };

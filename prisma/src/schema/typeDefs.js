@@ -14,8 +14,6 @@ module.exports = gql`
   type Artist {
     id:        ID!
     name:      String!
-    bio:       String
-    country:   String
     albums(take: Int, skip: Int): [Album!]
     songs(take: Int, skip: Int): [Song!]
     createdAt: DateTime!
@@ -26,7 +24,6 @@ module.exports = gql`
     id:        ID!
     title:     String!
     releaseYear: Int!
-    coverUrl:  String
     artist:    Artist!
     songs(take: Int, skip: Int): [Song!]
     createdAt: DateTime!
@@ -37,10 +34,11 @@ module.exports = gql`
     id:        ID!
     title:     String!
     duration:  Int!
-    trackNumber: Int
     album:     Album
     artist:    Artist!
     genre:     Genre!
+    explicit:  Boolean
+    popularity: Int
     reviews(take: Int, skip: Int): [Review!]
     createdAt: DateTime!
     updatedAt: DateTime!
@@ -64,6 +62,15 @@ module.exports = gql`
     updatedAt: DateTime!
   }
 
+  type Statistics {
+    genres:    Int!
+    artists:   Int!
+    albums:    Int!
+    songs:     Int!
+    playlists: Int!
+    reviews:   Int!
+  }
+
   # ── QUERIES ──────────────────────────────────────
   type Query {
     genres(take: Int, skip: Int): [Genre!]!
@@ -81,11 +88,12 @@ module.exports = gql`
     playlist(id: ID!): Playlist
 
     reviews(songId: ID!, take: Int, skip: Int): [Review!]!
+
+    stats: Statistics!
   }
 
   input ArtistListFilter {
     name: String
-    country: String
   }
 
   input SongListFilter {
@@ -105,15 +113,11 @@ module.exports = gql`
 
   input AddArtistInput {
     name: String!
-    country: String
-    bio: String
   }
 
   input UpdateArtistInput {
     id: ID!
     name: String
-    country: String
-    bio: String
   }
 
   input DeleteArtistInput {
@@ -124,7 +128,6 @@ module.exports = gql`
     title: String!
     releaseYear: Int!
     artistId: ID!
-    coverUrl: String
   }
 
   input UpdateAlbumInput {

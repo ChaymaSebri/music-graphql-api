@@ -14,24 +14,29 @@ Le projet est construit avec Node.js, Apollo Server, Express, Prisma et PostgreS
 
 ## 1. Objectif de la Phase 1
 
-Cette phase valide les fondamentaux GraphQL:
+Cette phase valide les fondamentaux GraphQL avec un dataset riche:
 - Schema GraphQL et types
-- Queries
-- Mutations
-- Subscriptions
-- Modele de donnees relationnel
-- Alimentation de la base avec des donnees reelles (MusicBrainz)
+- Queries avec pagination et filtrage
+- Mutations CRUD
+- Subscriptions temps réel
+- Modèle de données relationnel avancé
+- **Dataset**: 34k+ songs Spotify avec métadata rich (popularity, explicit)
 
 ## 2. Ce que couvre ce projet
 
 ### 2.1 Modelisation des donnees
-- Un genre contient plusieurs songs
-- Un artiste possede des albums/songs
-- Un album appartient a un artiste et contient des songs
-- Une song appartient a un artiste et un genre (album OPTIONNEL)
-- Une playlist contient plusieurs songs (many-to-many)
-- Une review appartient a une song
-- **AUTO-CLEANUP**: Quand la derniere song d'un album est supprimee, l'album est auto-supprime
+- **39 genres** Spotify
+- **13,547 artistes** avec métadonnées
+- **25,496 albums** (titre, année)
+- **34,660 songs** avec:
+  - Titre, durée en ms
+  - Album (optionnel)
+  - Artiste + Genre
+  - **Popularity** (0-100, score Spotify)
+  - **Explicit** (contenu explicite: true/false)
+- Playlist (vide initialement, créée par utilisateurs)
+- Review (vide initialement, créée par utilisateurs)
+- **AUTO-CLEANUP**: Dernière song d'album = album auto-supprimé
 
 ### 2.2 Validation metier implementee
 - Protection contre les doublons:
@@ -41,7 +46,6 @@ Cette phase valide les fondamentaux GraphQL:
 - Champs texte obligatoires non vides
 - score de review entre 1 et 10
 - duration positive
-- trackNumber positif si fourni (seul si albumId est fourni)
 - Erreurs GraphQL explicites pour conflits/contraintes
 
 ### 2.3 Temps reel
@@ -72,27 +76,22 @@ npm install
 
 ### 4.3 Synchroniser le schema Prisma
 
-En environnement non interactif (recommande ici):
-
 ```bash
-npx prisma migrate deploy
 npx prisma generate
+npx prisma db push --accept-data-loss
 ```
 
-Option migration interactive (si terminal local interactif):
+### 4.4 Alimenter la base avec dataset Spotify (34,660 songs)
+
+Télécharger depuis Kaggle: https://www.kaggle.com/datasets/maharshipandya/-spotify-tracks-dataset
+
+Placer le CSV dans `prisma/dataset.csv`, puis:
 
 ```bash
-npx prisma migrate dev --name artist_without_genre
+npm run seed-spotify
 ```
 
-Option reset complet (dev uniquement, supprime toutes les donnees):
-
-```bash
-npx prisma migrate reset --force
-```
-
-### 4.4 Alimenter la base
-
+**Alternative**: Données de démo (petite taille):
 ```bash
 npm run seed
 ```
@@ -128,43 +127,82 @@ Tous les types d'entités (`Genre`, `Artist`, `Album`, `Song`, `Playlist`, `Revi
 - Log d'audit (qui a agi quand?)
 - Gestion du cache côté client
 
-### Exemple: Récupérer la date d'une review
+### Exemple: Récupérer les dates d'une song
+
+**Option 1**: Récupérer la première song avec ses timestamps
 
 ```graphql
-query ReviewWithDates {
-  reviews(songId: "1") {
+query GetFirstSongWithDates {
+  songs(take: 1, skip: 0) {
     id
-    content
-    score
+    title
     createdAt
     updatedAt
-    song { id title }
   }
 }
 ```
 
-**Réponse attendue:**
+**Réponse:**
 ```json
 {
   "data": {
-    "reviews": [
+    "songs": [
       {
-        "id": "1",
-        "content": "Great song!",
-        "score": 9,
-        "createdAt": "2026-03-30T10:45:23.123Z",
-        "updatedAt": "2026-03-30T10:45:23.123Z",
-        "song": {
-          "id": "1",
-          "title": "Bohemian Rhapsody"
-        }
+        "id": "491",
+        "title": "Comedy",
+        "createdAt": "2026-04-01T00:09:03.668Z",
+        "updatedAt": "2026-04-01T00:09:03.668Z"
       }
     ]
   }
 }
 ```
 
+**Option 2**: Récupérer une song spécifique par ID
+
+```graphql
+query GetSongByIdWithDates {
+  song(id: "500") {
+    id
+    title
+    createdAt
+    updatedAt
+  }
+}
+```
+
 ## 5.1 Queries (lecture)
+
+### Q0. Statistiques globales (NOUVEAU)
+
+```graphql
+query GetStats {
+  stats {
+    genres
+    artists
+    albums
+    songs
+    playlists
+    reviews
+  }
+}
+```
+
+**Réponse** (avec dataset Spotify):
+```json
+{
+  "data": {
+    "stats": {
+      "genres": 39,
+      "artists": 13547,
+      "albums": 25496,
+      "songs": 34660,
+      "playlists": 0,
+      "reviews": 0
+    }
+  }
+}
+```
 
 ### Q1. Genres
 
@@ -183,10 +221,9 @@ query GetGenres {
 
 ```graphql
 query GetArtists {
-  artists(take: 20, skip: 0, filter: { name: "queen", country: "uk" }) {
+  artists(take: 20, skip: 0, filter: { name: "queen"}) {
     id
     name
-    country
   }
 }
 ```
@@ -198,7 +235,6 @@ query GetArtistsNoFilter {
   artists(take: 20, skip: 0) {
     id
     name
-    country
   }
 }
 ```
@@ -207,11 +243,9 @@ query GetArtistsNoFilter {
 
 ```graphql
 query GetArtistById {
-  artist(id: "1") {
+  artist(id: "500") {
     id
     name
-    bio
-    country
     albums { id title releaseYear }
     songs { id title }
   }
@@ -236,26 +270,27 @@ query GetAlbums {
 
 ```graphql
 query GetAlbumById {
-  album(id: "1") {
+  album(id: "350") {
     id
     title
     releaseYear
-    coverUrl
     artist { id name }
     songs { id title duration }
   }
 }
-```
+```.
+
 
 ### Q6. Songs
 
 ```graphql
 query GetSongs {
-  songs(take: 20, skip: 0, filter: { artistName: "queen", genreId: "1" }) {
+  songs(take: 20, skip: 0, filter: { artistName: "queen", genreId: "50" }) {
     id
     title
     duration
-    trackNumber
+    popularity
+    explicit
     artist { id name }
     album { id title }
     genre { id name }
@@ -264,6 +299,11 @@ query GetSongs {
   }
 }
 ```
+
+**Note**: 
+- `popularity` (0-100): Score de popularité Spotify
+- `explicit` (true/false): Indique contenu explicite
+- Pré-remplis pour données Spotify, null pour ajouts manuels
 
 Autres filtres possibles pour `songs`:
 - `filter: { title: "love" }`
@@ -274,11 +314,12 @@ Autres filtres possibles pour `songs`:
 
 ```graphql
 query GetSongById {
-  song(id: "1") {
+  song(id: "1000") {
     id
     title
     duration
-    trackNumber
+    popularity
+    explicit
     artist { id name }
     album { id title }
     genre { id name }
@@ -361,10 +402,9 @@ mutation AddGenre {
 
 ```graphql
 mutation AddArtist {
-  addArtist(input: { name: "Test Artist", country: "MA", bio: "Demo artist" }) {
+  addArtist(input: { name: "Test Artist" }) {
     id
     name
-    country
   }
 }
 ```
@@ -373,11 +413,9 @@ mutation AddArtist {
 
 ```graphql
 mutation UpdateArtist {
-  updateArtist(input: { id: "1", name: "Test Artist Updated", country: "FR", bio: "Updated bio" }) {
+  updateArtist(input: { id: "1", name: "Test Artist Updated" }) {
     id
     name
-    country
-    bio
   }
 }
 ```
@@ -386,7 +424,7 @@ mutation UpdateArtist {
 
 ```graphql
 mutation AddAlbum {
-  addAlbum(input: { title: "Test Album", releaseYear: 2024, artistId: "1", coverUrl: "https://img.test/cover.jpg" }) {
+  addAlbum(input: { title: "Test Album", releaseYear: 2024, artistId: "1" }) {
     id
     title
     releaseYear
@@ -407,41 +445,61 @@ mutation UpdateAlbum {
 }
 ```
 
-### M6. Ajouter une song
+### M6. Ajouter une song (Avec album)
 
 ```graphql
 mutation AddSong {
-  addSong(input: { title: "Test Song", duration: 210, albumId: "1", artistId: "1", genreId: "1", trackNumber: 1 }) {
+  addSong(input: { 
+    title: "My very New Song", 
+    duration: 210000, 
+    albumId: "331", 
+    artistId: "13717", 
+    genreId: "15"
+  }) {
     id
     title
     duration
-    trackNumber
+    popularity
+    explicit
     album { id title }
+    artist { id name }
+    genre { id name }
   }
 }
 ```
 
-Variante sans album (optionnel):
+Variante sans album (Spotify 2024+):
 
 ```graphql
-mutation AddSongWithoutAlbum {
-  addSong(input: { title: "Independent Song", duration: 210, artistId: "1", genreId: "1" }) {
+mutation AddSongIndependent {
+  addSong(input: { 
+    title: "Indie Release", 
+    duration: 180000, 
+    artistId: "500", 
+    genreId: "15"
+  }) {
     id
     title
     duration
-    album
+    popularity
+    explicit
+    artist { id name }
   }
 }
 ```
+
+**Note**: `popularity` (0-100) et `explicit` (true/false) sont remplis depuis le dataset Spotify. Pour ajouts manuels, ils restent null.
 
 ### M7. Mettre a jour une song
 
 ```graphql
 mutation UpdateSong {
-  updateSong(input: { id: "1", title: "Test Song Updated", duration: 220 }) {
+  updateSong(input: { id: "1", title: "Updated Title", duration: 220000 }) {
     id
     title
     duration
+    popularity
+    explicit
   }
 }
 ```
@@ -462,7 +520,7 @@ mutation AddPlaylist {
 
 ```graphql
 mutation AddSongToPlaylist {
-  addSongToPlaylist(input: { playlistId: "1", songId: "1" }) {
+  addSongToPlaylist(input: { playlistId: "6", songId: "500" }) {
     id
     name
     songs { id title }
@@ -548,7 +606,12 @@ subscription OnSongAdded {
   songAdded {
     id
     title
+    duration
+    popularity
+    explicit
     artist { id name }
+    album { id title }
+    genre { id name }
   }
 }
 ```
@@ -604,7 +667,7 @@ Pour tous les tests ci-dessous, le resultat attendu est:
 
 ```graphql
 mutation DuplicateArtist {
-  addArtist(input: { name: "Test Artist", country: "MA", bio: "dup" }) {
+  addArtist(input: { name: "Test Artist"}) {
     id
   }
 }
@@ -616,7 +679,7 @@ Attendu: message de type "Artist already exists..." ou "This record already exis
 
 ```graphql
 mutation DuplicateSong {
-  addSong(input: { title: "Test Song", duration: 210, albumId: "1", artistId: "1", genreId: "1", trackNumber: 1 }) {
+  addSong(input: { title: "Test Song", duration: 210, albumId: "1", artistId: "1", genreId: "1"}) {
     id
   }
 }
@@ -628,7 +691,7 @@ Attendu: message de type "Song already exists...".
 
 ```graphql
 mutation BadScore {
-  addReview(input: { content: "bad", score: 11, songId: "1" }) {
+  addReview(input: { content: "bad", score: 11, songId: "800" }) {
     id
   }
 }
@@ -696,19 +759,7 @@ mutation BadReleaseYear {
 
 Attendu: message indiquant releaseYear hors intervalle autorise.
 
-### V9. trackNumber invalide
-
-```graphql
-mutation BadTrackNumber {
-  addSong(input: { title: "Track Error", duration: 180, albumId: "1", artistId: "1", genreId: "1", trackNumber: 0 }) {
-    id
-  }
-}
-```
-
-Attendu: message indiquant trackNumber positif.
-
-### V10. Suppression de genre reference (conflit FK)
+### V9. Suppression de genre reference (conflit FK)
 
 ```graphql
 mutation DeleteReferencedGenre {
@@ -718,7 +769,7 @@ mutation DeleteReferencedGenre {
 
 Attendu: echec avec message de type "Cannot delete this record because it is still referenced".
 
-### V11. Suppression d artiste reference (conflit FK)
+### V10. Suppression d artiste reference (conflit FK)
 
 ```graphql
 mutation DeleteReferencedArtist {
@@ -728,7 +779,7 @@ mutation DeleteReferencedArtist {
 
 Attendu: echec tant que des albums/songs references existent.
 
-### V12. Suppression d un element inexistant
+### V11. Suppression d un element inexistant
 
 ```graphql
 mutation DeleteMissingReview {
@@ -761,8 +812,6 @@ mutation CreateSongNoAlbum {
 }
 ```
 
-Attendu: Success. `album: null`.
-
 ### T2. Creer une song AVEC album
 
 ```graphql
@@ -773,7 +822,6 @@ mutation CreateSongWithAlbum {
     albumId: "1"
     artistId: "1"
     genreId: "1"
-    trackNumber: 1
   }) {
     id
     title
@@ -792,7 +840,7 @@ Attendu: Success. `album` contient `{ id, title }`.
 
 ```graphql
 query CheckAlbum {
-  album(id: "1") {
+  album(id: "25828") {
     id
     title
     songs { id title }
@@ -807,9 +855,9 @@ mutation AddSongToAlbum {
   addSong(input: {
     title: "Last Song in Album"
     duration: 200
-    albumId: "1"
-    artistId: "1"
-    genreId: "1"
+    albumId: "25828"
+    artistId: "500"
+    genreId: "19"
   }) {
     id
     title
@@ -829,7 +877,7 @@ mutation DeleteLastSongAutoDeletesAlbum {
 
 ```graphql
 query CheckAlbumDeleted {
-  album(id: "1") {
+  album(id: "25828") {
     id
     title
   }
