@@ -241,13 +241,22 @@ export const Songs = ({ token, role, onSongClick }) => {
   const [songs, setSongs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [skip, setSkip] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const PER_PAGE = 15;
 
   useEffect(() => {
     setLoading(true);
-    fetchGraphQL(SONGS_QUERY, { skip, take: PER_PAGE }, token)
-      .then(d => setSongs(d.songs))
-      .catch(console.error)
+    fetchGraphQL(SONGS_QUERY, { skip, take: PER_PAGE + 1 }, token)
+      .then(d => {
+        const pageSongs = d.songs || [];
+        setHasMore(pageSongs.length > PER_PAGE);
+        setSongs(pageSongs.slice(0, PER_PAGE));
+      })
+      .catch(err => {
+        console.error(err);
+        setSongs([]);
+        setHasMore(false);
+      })
       .finally(() => setLoading(false));
   }, [skip, token]);
 
@@ -346,7 +355,13 @@ export const Songs = ({ token, role, onSongClick }) => {
               ))}
             </div>
 
-            <Pagination skip={skip} perPage={PER_PAGE} onPrev={() => setSkip(Math.max(0, skip - PER_PAGE))} onNext={() => setSkip(skip + PER_PAGE)} />
+            <Pagination
+              skip={skip}
+              perPage={PER_PAGE}
+              onPrev={() => setSkip(Math.max(0, skip - PER_PAGE))}
+              onNext={() => setSkip(skip + PER_PAGE)}
+              disableNext={!hasMore}
+            />
           </>
         )}
       </div>
@@ -362,12 +377,17 @@ export const Artists = ({ token }) => {
   const [artists, setArtists] = useState([]);
   const [loading, setLoading] = useState(true);
   const [skip, setSkip] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const PER_PAGE = 21;
 
   useEffect(() => {
     setLoading(true);
-    fetchGraphQL(ARTISTS_QUERY, { skip, take: PER_PAGE }, token)
-      .then(d => setArtists(d.artists))
+    fetchGraphQL(ARTISTS_QUERY, { skip, take: PER_PAGE + 1 }, token)
+      .then(d => {
+        const pageArtists = d.artists || [];
+        setHasMore(pageArtists.length > PER_PAGE);
+        setArtists(pageArtists.slice(0, PER_PAGE));
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [skip, token]);
@@ -418,7 +438,13 @@ export const Artists = ({ token }) => {
                 );
               })}
             </div>
-            <Pagination skip={skip} perPage={PER_PAGE} onPrev={() => setSkip(Math.max(0, skip - PER_PAGE))} onNext={() => setSkip(skip + PER_PAGE)} />
+            <Pagination
+              skip={skip}
+              perPage={PER_PAGE}
+              onPrev={() => setSkip(Math.max(0, skip - PER_PAGE))}
+              onNext={() => setSkip(skip + PER_PAGE)}
+              disableNext={!hasMore}
+            />
           </>
         )}
       </div>
