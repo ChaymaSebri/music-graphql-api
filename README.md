@@ -926,6 +926,35 @@ La Phase 1 est consideree fonctionnelle si:
 - **Songs peuvent exister sans album** (album optionnel)
 - **Auto-deletion**: Supprimer la derniere song d'un album supprime aussi l'album
 
+## 6.1 Sécurisation - Phase 2 ✅ COMPLÈTE
+
+**La sécurité de l'API est maintenant implémentée avec deux couches:**
+
+### 🛡️ Couche 1: Autorisation basée sur les rôles (graphql-shield)
+
+- **Fichiers**: `prisma/src/permissions.js`, `prisma/src/shield.js`
+- **Fonctionnement**: Middleware GraphQL qui valide les permissions avant d'exécuter les resolvers
+- **Rôles**:
+  - `ARTIST`: Peut créer/modifier des contenus (songs, albums, genres)
+  - `LISTENER`: Peut consulter et créer des avis
+- **Mutations protégées par rôle**:
+  - ✅ Artists ONLY: `addGenre`, `addSong`, `addAlbum`, `addArtist`
+  - ✅ Any User: `addPlaylist`, `addReview`
+
+### 🔑 Couche 2: Client Credentials (Clés API)
+
+- **Fichier**: `prisma/src/clientAuth.js`
+- **Fonctionnement**: Validation des headers `X-Client-ID` et `X-Client-Secret` sur chaque requête
+- **Clients valides**:
+  - `web_client` + `web_secret_key_abc123xyz789`
+  - `mobile_app` + `mobile_secret_key_def456uvw012`
+  - `admin_tool` + `admin_secret_key_ghi789rst345`
+  - `test_client` + `test_secret_key_jkl012opq678`
+
+**📖 Documentation complète**: Voir [SECURITY.md](SECURITY.md)
+
+---
+
 ## 6.1 Considérations pour la production
 
 ### 6.1.1 Limitation du système de Subscriptions actuel
@@ -1098,14 +1127,34 @@ npm install graphql-shield graphql-middleware
 Approche cible Phase 2:
 1. Définir des règles (`isAuthenticated`, `isAdmin`, etc.)
 2. Mapper les règles sur `Query`, `Mutation`, `Subscription`
-3. Appliquer la policy à votre schema exécutable
+### 6.2.2 Permissions avec graphql-shield
 
-Avantage:
+**✅ IMPLÉMENTÉ** - Voir [SECURITY.md](SECURITY.md) pour les détails complets.
+
+Approche Phase 2:
+1. ✅ Règles définies (`isAuthenticated`, `isArtist`, etc.)
+2. ✅ Règles mappées sur `Query`, `Mutation`, `Subscription`
+3. ✅ Policy appliquée au schema exécutable
+
+**Avantage:**
 - Séparation claire entre logique métier et logique d'autorisation
 - Politique globale, homogène, maintenable
 - Réduction du code répétitif dans les resolvers
 
-## 7. Commandes utiles
+---
+
+## 7. Résumé des phases complètes
+
+| Phase | Objectif | État | Notes |
+|-------|----------|------|-------|
+| **Phase 1** | GraphQL fondamentaux (queries, mutations, subscriptions) | ✅ COMPLET | 30/30 opérations, validation, dataset 34k songs |
+| **Phase 2** | Sécurisation (auth, roles, client credentials) | ✅ COMPLET | graphql-shield + client credentials implémentés |
+| **Client** | Application React avec rôles | ✅ COMPLET | Dual-role system, Apollo intégration |
+| **Documentation** | README, SECURITY, guides | ✅ COMPLET | 3 fichiers README + SECURITY.md |
+
+---
+
+## 8. Commandes utiles
 
 ```bash
 npm start
@@ -1115,3 +1164,16 @@ npx prisma generate
 npx prisma migrate deploy
 npx prisma migrate reset --force
 ```
+
+
+## 7.1 Scénarios de test par rôle
+
+### Listener Scenario
+- Browse music (Q6, Q7)
+- Create playlist (M8)
+- Add review (M11)
+
+### Artist Scenario
+- Create song (M6)
+- Edit album (M5)
+- View own songs

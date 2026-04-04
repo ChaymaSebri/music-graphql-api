@@ -6,6 +6,15 @@ datasource db {
   provider = "postgresql"
 }
 
+model Listener {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  playlists Playlist[]
+  reviews   Review[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
 model Genre {
   id        Int      @id @default(autoincrement())
   name      String   @unique
@@ -16,13 +25,12 @@ model Genre {
 
 model Artist {
   id        Int      @id @default(autoincrement())
-  name      String
+  name      String   @unique
+  email     String   @unique  // Auto-generated: artist{id}@musicdb.com
   albums    Album[]
   songs     Song[]
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
-
-  @@unique([name])
 }
 
 model Album {
@@ -60,11 +68,15 @@ model Song {
 
 model Playlist {
   id          Int      @id @default(autoincrement())
-  name        String   @unique
+  name        String
   description String?
+  listenerId  Int
+  listener    Listener @relation(fields: [listenerId], references: [id], onDelete: Cascade)
   songs       Song[]   @relation("PlaylistSongs")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @default(now()) @updatedAt
+
+  @@unique([name, listenerId])
 }
 
 model Review {
@@ -73,6 +85,10 @@ model Review {
   score     Int
   songId    Int
   song      Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
+  listenerId Int
+  listener  Listener @relation(fields: [listenerId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([songId, listenerId])
 }

@@ -62,6 +62,7 @@ function createLoaders() {
     artistSongs: createOneToManyLoader(prisma.song, 'artistId'),
     albumSongs: createOneToManyLoader(prisma.song, 'albumId'),
     songReviews: createOneToManyLoader(prisma.review, 'songId'),
+    genreSongs: createOneToManyLoader(prisma.song, 'genreId'),
     playlistSongs: createPlaylistSongsLoader(),
   };
 }

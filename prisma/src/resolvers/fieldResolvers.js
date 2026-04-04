@@ -100,4 +100,14 @@ module.exports = {
   Review: {
     song: (review, _, { loaders }) => loaders.songById.load(review.songId),
   },
+
+  Genre: {
+    songs: (genre, args, { loaders }) => {
+      if (!hasPaginationArgs(args)) {
+        return loaders.genreSongs.load(genre.id);
+      }
+      const { take, skip } = getPaginationArgs(args);
+      return prisma.song.findMany({ where: { genreId: genre.id }, take, skip, orderBy: STABLE_ORDER_BY });
+    },
+  },
 };

@@ -4,9 +4,19 @@ module.exports = gql`
   # Custom scalar for ISO 8601 datetime strings
   scalar DateTime
 
+  type Listener {
+    id:        ID!
+    email:     String!
+    playlists: [Playlist!]
+    reviews:   [Review!]
+    createdAt: DateTime!
+    updatedAt: DateTime!
+  }
+
   type Genre {
     id:        ID!
     name:      String!
+    songs(take: Int, skip: Int): [Song!]
     createdAt: DateTime!
     updatedAt: DateTime!
   }
@@ -14,6 +24,7 @@ module.exports = gql`
   type Artist {
     id:        ID!
     name:      String!
+    email:     String!
     albums(take: Int, skip: Int): [Album!]
     songs(take: Int, skip: Int): [Song!]
     createdAt: DateTime!
@@ -48,6 +59,7 @@ module.exports = gql`
     id:         ID!
     name:       String!
     description: String
+    listener:   Listener!
     songs(take: Int, skip: Int): [Song!]
     createdAt:  DateTime!
     updatedAt:  DateTime!
@@ -58,6 +70,7 @@ module.exports = gql`
     content:   String!
     score:     Int!
     song:      Song!
+    listener:  Listener!
     createdAt: DateTime!
     updatedAt: DateTime!
   }
@@ -73,6 +86,8 @@ module.exports = gql`
 
   # ── QUERIES ──────────────────────────────────────
   type Query {
+    me: Listener!
+
     genres(take: Int, skip: Int): [Genre!]!
 
     artists(take: Int, skip: Int, filter: ArtistListFilter): [Artist!]!
@@ -94,6 +109,7 @@ module.exports = gql`
 
   input ArtistListFilter {
     name: String
+    email: String
   }
 
   input SongListFilter {
@@ -147,6 +163,7 @@ module.exports = gql`
     artistId: ID!
     genreId: ID!
     trackNumber: Int
+    explicit: Boolean
   }
 
   input UpdateSongInput {
@@ -164,9 +181,19 @@ module.exports = gql`
     description: String
   }
 
-  input PlaylistSongInput {
+  input AddSongToPlaylistInput {
     playlistId: ID!
     songId: ID!
+  }
+
+  input DeletePlaylistInput {
+    id: ID!
+  }
+
+  input UpdatePlaylistInput {
+    id: ID!
+    name: String!
+    description: String
   }
 
   input AddReviewInput {
@@ -197,8 +224,10 @@ module.exports = gql`
     deleteSong(input: DeleteSongInput!): Boolean!
 
     addPlaylist(input: AddPlaylistInput!): Playlist!
-    addSongToPlaylist(input: PlaylistSongInput!): Playlist!
-    removeSongFromPlaylist(input: PlaylistSongInput!): Playlist!
+    addSongToPlaylist(input: AddSongToPlaylistInput!): Playlist!
+    removeSongFromPlaylist(input: AddSongToPlaylistInput!): Playlist!
+    deletePlaylist(input: DeletePlaylistInput!): Boolean!
+    updatePlaylist(input: UpdatePlaylistInput!): Playlist!
 
     addReview(input: AddReviewInput!): Review!
     deleteReview(input: DeleteReviewInput!): Boolean!

@@ -65,6 +65,13 @@ function getArtistWhere(filter) {
     }
   }
 
+  if (filter.email != null) {
+    const trimmed = String(filter.email).trim();
+    if (trimmed.length) {
+      where.email = { contains: trimmed, mode: 'insensitive' };
+    }
+  }
+
   if (filter.country != null) {
     const trimmed = String(filter.country).trim();
     if (trimmed.length) {
@@ -110,6 +117,26 @@ function getSongWhere(filter) {
 }
 
 module.exports = {
+  me: async (_, __, { user }) => {
+    if (!user) {
+      throw new GraphQLError('Authentication required', {
+        extensions: { code: 'UNAUTHENTICATED' },
+      });
+    }
+    // Upsert listener to ensure they exist in the database
+    return prisma.listener.upsert({
+      where: { email: user.email },
+      create: {
+        email: user.email,
+      },
+      update: {},
+      include: {
+        playlists: { include: { songs: true } },
+        reviews: { include: { song: true } },
+      },
+    });
+  },
+
   genres:    (_, args) => {
     const { take, skip } = getPaginationArgs(args);
     return prisma.genre.findMany({ take, skip, orderBy: STABLE_ORDER_BY });

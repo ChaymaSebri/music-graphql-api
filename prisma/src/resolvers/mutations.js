@@ -42,6 +42,9 @@ function parsePositiveId(value, fieldName) {
   return parsed;
 }
 
+/**
+ * Require user to be authenticated
+ */
 function requireAuth(user) {
   if (!user) {
     throw new GraphQLError('Authentication required', {
@@ -50,11 +53,36 @@ function requireAuth(user) {
   }
 }
 
-function withAuth(resolver) {
-  return async (parent, args, context, info) => {
-    requireAuth(context?.user);
-    return resolver(parent, args, context, info);
-  };
+/**
+ * Require user to be authenticated AND have ARTIST role
+ */
+function requireArtist(user) {
+  if (!user) {
+    throw new GraphQLError('Authentication required', {
+      extensions: { code: 'UNAUTHENTICATED' },
+    });
+  }
+  if (user.role !== 'ARTIST') {
+    throw new GraphQLError('This action requires ARTIST role', {
+      extensions: { code: 'FORBIDDEN' },
+    });
+  }
+}
+
+/**
+ * Require user to be authenticated AND have LISTENER role
+ */
+function requireListener(user) {
+  if (!user) {
+    throw new GraphQLError('Authentication required', {
+      extensions: { code: 'UNAUTHENTICATED' },
+    });
+  }
+  if (user.role !== 'LISTENER') {
+    throw new GraphQLError('This action requires LISTENER role', {
+      extensions: { code: 'FORBIDDEN' },
+    });
+  }
 }
 
 function formatPrismaError(error) {
@@ -117,8 +145,9 @@ function formatPrismaError(error) {
 }
 
 const mutationResolvers = {
-  // ── Genre ──
-  addGenre: async (_, { input }) => {
+  // ── Genre ── (ARTIST ONLY)
+  addGenre: async (_, { input }, { user }) => {
+    requireArtist(user);
     assertNonEmptyString(input.name, 'name');
 
     try {
@@ -127,7 +156,8 @@ const mutationResolvers = {
       throw formatPrismaError(error);
     }
   },
-  deleteGenre: async (_, { input }) => {
+  deleteGenre: async (_, { input }, { user }) => {
+    requireArtist(user);
     try {
       const genreId = parsePositiveId(input.id, 'id');
       await prisma.genre.delete({ where: { id: genreId } });
@@ -137,8 +167,9 @@ const mutationResolvers = {
     }
   },
 
-  // ── Artist ──
-  addArtist: async (_, { input }) => {
+  // ── Artist ── (ARTIST ONLY)
+  addArtist: async (_, { input }, { user }) => {
+    requireArtist(user);
     assertNonEmptyString(input.name, 'name');
 
     const normalizedName = input.name.trim();
@@ -147,15 +178,26 @@ const mutationResolvers = {
       const artist = await prisma.artist.create({
         data: {
           name: normalizedName,
+          email: `artist${input.id || Date.now()}@musicdb.com`, // Temporary, will be updated
         },
       });
-      pubsub.publish('ARTIST_ADDED', { artistAdded: artist });
-      return artist;
+      
+      // Update with correct email based on the generated ID
+      const updatedArtist = await prisma.artist.update({
+        where: { id: artist.id },
+        data: {
+          email: `artist${artist.id}@musicdb.com`,
+        },
+      });
+      
+      pubsub.publish('ARTIST_ADDED', { artistAdded: updatedArtist });
+      return updatedArtist;
     } catch (error) {
       throw formatPrismaError(error);
     }
   },
-  updateArtist: async (_, { input }) => {
+  updateArtist: async (_, { input }, { user }) => {
+    requireArtist(user);
     const artistId = parsePositiveId(input.id, 'id');
     const updates = {};
     if (input.name !== undefined) {
@@ -169,7 +211,8 @@ const mutationResolvers = {
       throw formatPrismaError(error);
     }
   },
-  deleteArtist: async (_, { input }) => {
+  deleteArtist: async (_, { input }, { user }) => {
+    requireArtist(user);
     try {
       const artistId = parsePositiveId(input.id, 'id');
       await prisma.artist.delete({ where: { id: artistId } });
@@ -179,8 +222,9 @@ const mutationResolvers = {
     }
   },
 
-  // ── Album ──
-  addAlbum: async (_, { input }) => {
+  // ── Album ── (ARTIST ONLY)
+  addAlbum: async (_, { input }, { user }) => {
+    requireArtist(user);
     assertNonEmptyString(input.title, 'title');
     assertIntRange(input.releaseYear, 'releaseYear', 1900, new Date().getFullYear() + 1);
     const artistId = parsePositiveId(input.artistId, 'artistId');
@@ -199,7 +243,8 @@ const mutationResolvers = {
       throw formatPrismaError(error);
     }
   },
-  updateAlbum: async (_, { input }) => {
+  updateAlbum: async (_, { input }, { user }) => {
+    requireArtist(user);
     const albumId = parsePositiveId(input.id, 'id');
     const updates = {};
     if (input.title !== undefined) {
@@ -217,7 +262,8 @@ const mutationResolvers = {
       throw formatPrismaError(error);
     }
   },
-  deleteAlbum: async (_, { input }) => {
+  deleteAlbum: async (_, { input }, { user }) => {
+    requireArtist(user);
     try {
       const albumId = parsePositiveId(input.id, 'id');
       await prisma.album.delete({ where: { id: albumId } });
@@ -227,8 +273,9 @@ const mutationResolvers = {
     }
   },
 
-  // ── Song ──
-  addSong: async (_, { input }) => {
+  // ── Song ── (ARTIST ONLY)
+  addSong: async (_, { input }, { user }) => {
+    requireArtist(user);
     assertNonEmptyString(input.title, 'title');
     assertPositiveInt(input.duration, 'duration');
 
@@ -274,6 +321,11 @@ const mutationResolvers = {
           songData.albumId = albumId;
         }
 
+        // Only include explicit if it's provided
+        if (input.explicit !== undefined && input.explicit !== null) {
+          songData.explicit = input.explicit;
+        }
+
         // Return base song row; relations are resolved lazily via field resolvers + DataLoader.
         const createdSong = await tx.song.create({
           data: songData,
@@ -288,7 +340,8 @@ const mutationResolvers = {
       throw formatPrismaError(error);
     }
   },
-  updateSong: async (_, { input }) => {
+  updateSong: async (_, { input }, { user }) => {
+    requireArtist(user);
     const songId = parsePositiveId(input.id, 'id');
     const updates = {};
     if (input.title !== undefined) {
@@ -315,7 +368,8 @@ const mutationResolvers = {
       throw formatPrismaError(error);
     }
   },
-  deleteSong: async (_, { input }) => {
+  deleteSong: async (_, { input }, { user }) => {
+    requireArtist(user);
     const songId = parsePositiveId(input.id, 'id');
 
     try {
@@ -344,22 +398,38 @@ const mutationResolvers = {
     }
   },
 
-  // ── Playlist ──
-  addPlaylist: async (_, { input }) => {
+  // ── Playlist ── (ANY AUTHENTICATED USER)
+  addPlaylist: async (_, { input }, { user }) => {
+    requireAuth(user);
     assertNonEmptyString(input.name, 'name');
 
     try {
+      // Get the listener's database ID by email
+      const dbListener = await prisma.listener.findUnique({
+        where: { email: user.email },
+        select: { id: true },
+      });
+
+      if (!dbListener) {
+        throw new GraphQLError('Listener not found', {
+          extensions: { code: 'NOT_FOUND' },
+        });
+      }
+
       return await prisma.playlist.create({
         data: {
           name: input.name.trim(),
           description: trimOrNull(input.description),
+          listenerId: dbListener.id,
         },
+        include: { listener: true, songs: true },
       });
     } catch (error) {
       throw formatPrismaError(error);
     }
   },
-  addSongToPlaylist: async (_, { input }) => {
+  addSongToPlaylist: async (_, { input }, { user }) => {
+    requireAuth(user);
     const safePlaylistId = parsePositiveId(input.playlistId, 'playlistId');
     const safeSongId = parsePositiveId(input.songId, 'songId');
 
@@ -367,13 +437,14 @@ const mutationResolvers = {
       return await prisma.playlist.update({
         where: { id: safePlaylistId },
         data:  { songs: { connect: { id: safeSongId } } },
-        include: { songs: true },
+        include: { songs: true, listener: true },
       });
     } catch (error) {
       throw formatPrismaError(error);
     }
   },
-  removeSongFromPlaylist: async (_, { input }) => {
+  removeSongFromPlaylist: async (_, { input }, { user }) => {
+    requireAuth(user);
     const safePlaylistId = parsePositiveId(input.playlistId, 'playlistId');
     const safeSongId = parsePositiveId(input.songId, 'songId');
 
@@ -404,23 +475,65 @@ const mutationResolvers = {
       return await prisma.playlist.update({
         where: { id: safePlaylistId },
         data:  { songs: { disconnect: { id: safeSongId } } },
-        include: { songs: true },
+        include: { songs: true, listener: true },
+      });
+    } catch (error) {
+      throw formatPrismaError(error);
+    }
+  },
+  deletePlaylist: async (_, { input }, { user }) => {
+    requireAuth(user);
+    const playlistId = parsePositiveId(input.id, 'id');
+
+    try {
+      await prisma.playlist.delete({ where: { id: playlistId } });
+      return true;
+    } catch (error) {
+      throw formatPrismaError(error);
+    }
+  },
+  updatePlaylist: async (_, { input }, { user }) => {
+    requireAuth(user);
+    const playlistId = parsePositiveId(input.id, 'id');
+    assertNonEmptyString(input.name, 'name');
+
+    try {
+      return await prisma.playlist.update({
+        where: { id: playlistId },
+        data: {
+          name: input.name.trim(),
+          description: trimOrNull(input.description),
+        },
+        include: { listener: true, songs: true },
       });
     } catch (error) {
       throw formatPrismaError(error);
     }
   },
 
-  // ── Review ──
-  addReview: async (_, { input }) => {
+  // ── Review ── (ANY AUTHENTICATED USER)
+  addReview: async (_, { input }, { user }) => {
+    requireAuth(user);
     assertNonEmptyString(input.content, 'content');
     assertIntRange(input.score, 'score', 1, 10);
     const songId = parsePositiveId(input.songId, 'songId');
 
     try {
+      // Get the listener's database ID by email
+      const dbListener = await prisma.listener.findUnique({
+        where: { email: user.email },
+        select: { id: true },
+      });
+
+      if (!dbListener) {
+        throw new GraphQLError('Listener not found', {
+          extensions: { code: 'NOT_FOUND' },
+        });
+      }
+
       const review = await prisma.review.create({
-        data: { content: input.content.trim(), score: input.score, songId },
-        include: { song: true },
+        data: { content: input.content.trim(), score: input.score, songId, listenerId: dbListener.id },
+        include: { song: true, listener: true },
       });
       pubsub.publish('REVIEW_ADDED', { reviewAdded: review });
       return review;
@@ -428,7 +541,8 @@ const mutationResolvers = {
       throw formatPrismaError(error);
     }
   },
-  deleteReview: async (_, { input }) => {
+  deleteReview: async (_, { input }, { user }) => {
+    requireAuth(user);
     try {
       const reviewId = parsePositiveId(input.id, 'id');
       await prisma.review.delete({ where: { id: reviewId } });
@@ -439,6 +553,4 @@ const mutationResolvers = {
   },
 };
 
-module.exports = Object.fromEntries(
-  Object.entries(mutationResolvers).map(([name, resolver]) => [name, withAuth(resolver)]),
-);
+module.exports = mutationResolvers;
