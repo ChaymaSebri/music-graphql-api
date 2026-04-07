@@ -63,8 +63,13 @@ async function start() {
     credentials: true,
   }));
 
-  // Enforce client credentials for GraphQL HTTP requests.
-  app.use(requireClientCredentials);
+  // Allow Apollo Sandbox/landing page requests, but enforce client credentials on GraphQL POSTs.
+  app.use((req, res, next) => {
+    if (req.method === 'POST' && req.path === '/graphql') {
+      return requireClientCredentials(req, res, next);
+    }
+    return next();
+  });
 
   // GraphQL endpoint
   app.use('/graphql', express.json(), expressMiddleware(server, {
