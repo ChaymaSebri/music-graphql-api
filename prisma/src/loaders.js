@@ -58,6 +58,8 @@ function createLoaders() {
     albumById: createEntityByIdLoader(prisma.album),
     genreById: createEntityByIdLoader(prisma.genre),
     songById: createEntityByIdLoader(prisma.song),
+    listenerPlaylists: createOneToManyLoader(prisma.playlist, 'listenerId'),
+    listenerReviews: createOneToManyLoader(prisma.review, 'listenerId'),
     artistAlbums: createOneToManyLoader(prisma.album, 'artistId'),
     artistSongs: createOneToManyLoader(prisma.song, 'artistId'),
     albumSongs: createOneToManyLoader(prisma.song, 'albumId'),

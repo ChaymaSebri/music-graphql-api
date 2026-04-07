@@ -35,7 +35,20 @@ function getPaginationArgs(args = {}) {
 }
 
 module.exports = {
+  Listener: {
+    playlists: (listener, _, { loaders }) => loaders.listenerPlaylists.load(listener.id),
+    reviews: (listener, _, { loaders }) => loaders.listenerReviews.load(listener.id),
+  },
+
   Artist: {
+    songCount: (artist) => {
+      if (artist?._count?.songs != null) return artist._count.songs;
+      return prisma.song.count({ where: { artistId: artist.id } });
+    },
+    albumCount: (artist) => {
+      if (artist?._count?.albums != null) return artist._count.albums;
+      return prisma.album.count({ where: { artistId: artist.id } });
+    },
     albums: (artist, args, { loaders }) => {
       if (!hasPaginationArgs(args)) {
         return loaders.artistAlbums.load(artist.id);
@@ -54,6 +67,10 @@ module.exports = {
 
   Album: {
     artist: (album, _, { loaders }) => loaders.artistById.load(album.artistId),
+    songCount: (album) => {
+      if (album?._count?.songs != null) return album._count.songs;
+      return prisma.song.count({ where: { albumId: album.id } });
+    },
     songs: (album, args, { loaders }) => {
       if (!hasPaginationArgs(args)) {
         return loaders.albumSongs.load(album.id);
@@ -67,6 +84,10 @@ module.exports = {
     album: (song, _, { loaders }) => (song.albumId ? loaders.albumById.load(song.albumId) : null),
     artist: (song, _, { loaders }) => loaders.artistById.load(song.artistId),
     genre: (song, _, { loaders }) => loaders.genreById.load(song.genreId),
+    reviewCount: (song) => {
+      if (song?._count?.reviews != null) return song._count.reviews;
+      return prisma.review.count({ where: { songId: song.id } });
+    },
     reviews: (song, args, { loaders }) => {
       if (!hasPaginationArgs(args)) {
         return loaders.songReviews.load(song.id);
@@ -77,6 +98,12 @@ module.exports = {
   },
 
   Playlist: {
+    songCount: (playlist) => {
+      if (playlist?._count?.songs != null) return playlist._count.songs;
+      return prisma.song.count({
+        where: { playlists: { some: { id: playlist.id } } },
+      });
+    },
     songs: (playlist, args, { loaders }) => {
       if (!hasPaginationArgs(args)) {
         return loaders.playlistSongs.load(playlist.id);
@@ -102,6 +129,10 @@ module.exports = {
   },
 
   Genre: {
+    songCount: (genre) => {
+      if (genre?._count?.songs != null) return genre._count.songs;
+      return prisma.song.count({ where: { genreId: genre.id } });
+    },
     songs: (genre, args, { loaders }) => {
       if (!hasPaginationArgs(args)) {
         return loaders.genreSongs.load(genre.id);

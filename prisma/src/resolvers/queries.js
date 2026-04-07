@@ -53,6 +53,38 @@ function parsePositiveId(value, fieldName) {
   return parsed;
 }
 
+function getOrderBy(sort, allowedFields) {
+  if (!sort) return STABLE_ORDER_BY;
+
+  const field = String(sort.field || '');
+  if (!allowedFields.includes(field)) {
+    throw new GraphQLError(`sort.field must be one of: ${allowedFields.join(', ')}`, {
+      extensions: { code: 'BAD_USER_INPUT' },
+    });
+  }
+
+  const direction = String(sort.direction || '').toLowerCase();
+  if (direction !== 'asc' && direction !== 'desc') {
+    throw new GraphQLError('sort.direction must be asc or desc', {
+      extensions: { code: 'BAD_USER_INPUT' },
+    });
+  }
+
+  if (field === 'id') {
+    return [{ id: direction }];
+  }
+
+  return [{ [field]: direction }, { id: 'asc' }];
+}
+
+function requireAuth(user) {
+  if (!user) {
+    throw new GraphQLError('Authentication required', {
+      extensions: { code: 'UNAUTHENTICATED' },
+    });
+  }
+}
+
 function getArtistWhere(filter) {
   if (!filter) return undefined;
 
@@ -118,68 +150,122 @@ function getSongWhere(filter) {
 
 module.exports = {
   me: async (_, __, { user }) => {
-    if (!user) {
-      throw new GraphQLError('Authentication required', {
-        extensions: { code: 'UNAUTHENTICATED' },
+    requireAuth(user);
+    if (user.role !== 'LISTENER') {
+      throw new GraphQLError('This query is available for LISTENER accounts only', {
+        extensions: { code: 'FORBIDDEN' },
       });
     }
-    // Upsert listener to ensure they exist in the database
+    // Upsert listener to ensure they exist in the database.
+    // Do not eagerly load related data here; field resolvers fetch only what is requested.
     return prisma.listener.upsert({
       where: { email: user.email },
       create: {
         email: user.email,
       },
       update: {},
-      include: {
-        playlists: { include: { songs: true } },
-        reviews: { include: { song: true } },
-      },
     });
   },
 
-  genres:    (_, args) => {
+  genres:    (_, args, { user }) => {
+    requireAuth(user);
     const { take, skip } = getPaginationArgs(args);
-    return prisma.genre.findMany({ take, skip, orderBy: STABLE_ORDER_BY });
+    const orderBy = getOrderBy(args?.sort, ['name', 'createdAt']);
+    return prisma.genre.findMany({
+      take,
+      skip,
+      orderBy,
+      include: { _count: { select: { songs: true } } },
+    });
   },
 
-  artists:   (_, args) => {
+  artists:   (_, args, { user }) => {
+    requireAuth(user);
     const { take, skip } = getPaginationArgs(args);
     const where = getArtistWhere(args?.filter);
-    return prisma.artist.findMany({ take, skip, where, orderBy: STABLE_ORDER_BY });
+    const orderBy = getOrderBy(args?.sort, ['id', 'name', 'createdAt']);
+    return prisma.artist.findMany({
+      take,
+      skip,
+      where,
+      orderBy,
+      include: { _count: { select: { songs: true, albums: true } } },
+    });
   },
-  artist:    (_, { id }) => prisma.artist.findUnique({ where: { id: parsePositiveId(id, 'id') } }),
+  artist:    (_, { id }, { user }) => {
+    requireAuth(user);
+    return prisma.artist.findUnique({ where: { id: parsePositiveId(id, 'id') } });
+  },
 
-  albums:    (_, args) => {
+  albums:    (_, args, { user }) => {
+    requireAuth(user);
     const { take, skip } = getPaginationArgs(args);
-    return prisma.album.findMany({ take, skip, orderBy: STABLE_ORDER_BY });
+    const orderBy = getOrderBy(args?.sort, ['id', 'title', 'releaseYear', 'createdAt']);
+    return prisma.album.findMany({
+      take,
+      skip,
+      orderBy,
+      include: { _count: { select: { songs: true } } },
+    });
   },
-  album:     (_, { id }) => prisma.album.findUnique({ where: { id: parsePositiveId(id, 'id') } }),
+  album:     (_, { id }, { user }) => {
+    requireAuth(user);
+    return prisma.album.findUnique({ where: { id: parsePositiveId(id, 'id') } });
+  },
 
-  songs:     (_, args) => {
+  songs:     (_, args, { user }) => {
+    requireAuth(user);
     const { take, skip } = getPaginationArgs(args);
     const where = getSongWhere(args?.filter);
-    return prisma.song.findMany({ take, skip, where, orderBy: STABLE_ORDER_BY });
+    const orderBy = getOrderBy(args?.sort, ['id', 'title', 'popularity', 'createdAt']);
+    return prisma.song.findMany({ take, skip, where, orderBy });
   },
-  song:      (_, { id }) => prisma.song.findUnique({ where: { id: parsePositiveId(id, 'id') } }),
+  song:      (_, { id }, { user }) => {
+    requireAuth(user);
+    return prisma.song.findUnique({ where: { id: parsePositiveId(id, 'id') } });
+  },
 
-  playlists: (_, args) => {
+  playlists: (_, args, { user }) => {
+    requireAuth(user);
     const { take, skip } = getPaginationArgs(args);
-    return prisma.playlist.findMany({ take, skip, orderBy: STABLE_ORDER_BY });
+    const orderBy = getOrderBy(args?.sort, ['id', 'name', 'createdAt']);
+    return prisma.playlist.findMany({
+      take,
+      skip,
+      orderBy,
+      include: { _count: { select: { songs: true } } },
+    });
   },
-  playlist:  (_, { id }) => prisma.playlist.findUnique({ where: { id: parsePositiveId(id, 'id') } }),
+  playlist:  (_, { id }, { user }) => {
+    requireAuth(user);
+    return prisma.playlist.findUnique({ where: { id: parsePositiveId(id, 'id') } });
+  },
 
-  reviews:   (_, args) => {
+  reviews:   (_, args, { user }) => {
+    requireAuth(user);
     const songId = parseIdFilter(args.songId, 'songId');
     const { take, skip } = getPaginationArgs(args);
-    return prisma.review.findMany({ where: { songId }, take, skip, orderBy: STABLE_ORDER_BY });
+    const orderBy = getOrderBy(args?.sort, ['id', 'score', 'createdAt']);
+    return prisma.review.findMany({ where: { songId }, take, skip, orderBy });
   },
 
-  stats: async () => ({
-    genres: await prisma.genre.count(),
-    artists: await prisma.artist.count(),
-    albums: await prisma.album.count(),
-    songs: await prisma.song.count(),
-    playlists: await prisma.playlist.count(),
-    reviews: await prisma.review.count(),
-  }),
+  stats: async (_, __, { user }) => {
+    requireAuth(user);
+    const [genres, artists, albums, songs, playlists, reviews] = await Promise.all([
+      prisma.genre.count(),
+      prisma.artist.count(),
+      prisma.album.count(),
+      prisma.song.count(),
+      prisma.playlist.count(),
+      prisma.review.count(),
+    ]);
+    return {
+      genres,
+      artists,
+      albums,
+      songs,
+      playlists,
+      reviews,
+    };
+  },
 };

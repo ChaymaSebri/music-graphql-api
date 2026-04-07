@@ -200,13 +200,6 @@ const fmt = (ms) => {
   return `${m}:${s < 10 ? '0' : ''}${s}`;
 };
 
-const avgScore = (reviews) => {
-  if (!reviews?.length) return null;
-  return (reviews.reduce((sum, r) => sum + r.score, 0) / reviews.length).toFixed(1);
-};
-
-const scoreColor = (n) => n >= 8 ? '#1DB954' : n >= 5 ? '#facc15' : '#e05555';
-
 // ─── MySongs ──────────────────────────────────────────────────────────────────
 
 export const MySongs = ({ token }) => {
@@ -238,7 +231,7 @@ export const MySongs = ({ token }) => {
           setHasMore(all.length > PER_PAGE);
           setSongs(all.slice(0, PER_PAGE));
           const cd = await fetchGraphQL(GET_TOTAL_SONGS_QUERY, { artistEmail: email }, token);
-          setTotalSongCount(cd.artists?.[0]?.songs?.length || 0);
+            setTotalSongCount(cd.artists?.[0]?.songCount || 0);
         } else {
           setSongs([]); setHasMore(false); setTotalSongCount(0);
           setError('No artist profile found.');
@@ -343,48 +336,44 @@ export const MySongs = ({ token }) => {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {songs.map((song, i) => {
-                const avg = avgScore(song.reviews);
-                const color = avg ? scoreColor(parseFloat(avg)) : '#333';
-                return (
-                  <div key={song.id} className="song-row ap-fadeup" style={{ animationDelay: `${i * 0.04}s` }}>
-                    {/* Left */}
-                    <div style={{ minWidth: 0 }}>
-                      <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '16px', color: '#e8e8e8', margin: '0 0 4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{song.title}</p>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: '#1DB954' }}>{song.genre.name}</span>
-                        {song.explicit && (
-                          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '9px', padding: '1px 6px', borderRadius: 3, background: 'rgba(224,85,85,0.1)', color: '#e05555', border: '1px solid rgba(224,85,85,0.2)' }}>E</span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Right */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexShrink: 0 }}>
-                      {/* Popularity bar */}
-                      {song.popularity != null && (
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
-                          <div style={{ width: 50, height: 3, background: '#1e1e1e', borderRadius: 2, overflow: 'hidden' }}>
-                            <div style={{ width: `${song.popularity}%`, height: '100%', background: '#1DB954', borderRadius: 2 }}/>
-                          </div>
-                          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '9px', color: '#333' }}>pop {song.popularity}</span>
-                        </div>
+              {songs.map((song, i) => (
+                <div key={song.id} className="song-row ap-fadeup" style={{ animationDelay: `${i * 0.04}s` }}>
+                  {/* Left */}
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '16px', color: '#e8e8e8', margin: '0 0 4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{song.title}</p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: '#1DB954' }}>{song.genre.name}</span>
+                      {song.explicit && (
+                        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '9px', padding: '1px 6px', borderRadius: 3, background: 'rgba(224,85,85,0.1)', color: '#e05555', border: '1px solid rgba(224,85,85,0.2)' }}>E</span>
                       )}
-
-                      {/* Avg score */}
-                      {avg && (
-                        <div style={{ textAlign: 'right' }}>
-                          <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '18px', color }}>{avg}</span>
-                          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '9px', color: '#333' }}>/10</span>
-                        </div>
-                      )}
-
-                      {/* Duration */}
-                      <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '13px', color: '#555', minWidth: 36, textAlign: 'right' }}>{fmt(song.duration)}</span>
                     </div>
                   </div>
-                );
-              })}
+
+                  {/* Right */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexShrink: 0 }}>
+                    {/* Popularity bar */}
+                    {song.popularity != null && (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+                        <div style={{ width: 50, height: 3, background: '#1e1e1e', borderRadius: 2, overflow: 'hidden' }}>
+                          <div style={{ width: `${song.popularity}%`, height: '100%', background: '#1DB954', borderRadius: 2 }}/>
+                        </div>
+                        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '9px', color: '#333' }}>pop {song.popularity}</span>
+                      </div>
+                    )}
+
+                    {/* Review count */}
+                    {song.reviewCount > 0 && (
+                      <div style={{ textAlign: 'right' }}>
+                        <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '18px', color: '#1DB954' }}>{song.reviewCount}</span>
+                        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '9px', color: '#333' }}>reviews</span>
+                      </div>
+                    )}
+
+                    {/* Duration */}
+                    <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '13px', color: '#555', minWidth: 36, textAlign: 'right' }}>{fmt(song.duration)}</span>
+                    </div>
+                  </div>
+                ))}
             </div>
 
             {(skip > 0 || hasMore) && (
@@ -422,7 +411,7 @@ export const MyAlbums = ({ token }) => {
       setArtistId(artist.id);
       setAlbums(artist.albums || []);
       const cd = await fetchGraphQL(GET_TOTAL_ALBUMS_QUERY, { artistEmail: email }, token);
-      setTotalAlbumCount(cd.artists?.[0]?.albums?.length || 0);
+        setTotalAlbumCount(cd.artists?.[0]?.albumCount || 0);
     } else { setAlbums([]); setTotalAlbumCount(0); }
   };
 

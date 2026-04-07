@@ -39,7 +39,21 @@ function getUserFromWsContext(ctx) {
   return decodeUserFromToken(token);
 }
 
+function signAuthToken({ sub, email, role }) {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET is not configured');
+  }
+
+  return jwt.sign(
+    { sub, email, role },
+    secret,
+    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' },
+  );
+}
+
 module.exports = {
   getUserFromHttpRequest,
   getUserFromWsContext,
+  signAuthToken,
 };

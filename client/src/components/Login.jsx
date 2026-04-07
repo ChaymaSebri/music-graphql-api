@@ -1,346 +1,384 @@
-import React, { useState, useEffect } from 'react';
-import { theme } from '../styles/theme.js';
-import { Button } from './UI.jsx';
+import React, { useState } from "react";
+import {
+  fetchGraphQL,
+  LOGIN_MUTATION,
+  SIGNUP_MUTATION,
+} from "../graphql/api.js";
 
-// Inject Google Fonts + keyframes
-const styleTag = document.createElement('style');
+const styleTag = document.createElement("style");
 styleTag.textContent = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400&display=swap');
 
   @keyframes fadeUp {
-    from { opacity: 0; transform: translateY(20px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-  @keyframes spin {
-    from { transform: rotate(0deg); }
-    to   { transform: rotate(360deg); }
-  }
-  @keyframes pulse-ring {
-    0%   { transform: scale(0.95); opacity: 0.6; }
-    50%  { transform: scale(1.05); opacity: 0.2; }
-    100% { transform: scale(0.95); opacity: 0.6; }
-  }
-  @keyframes shimmer {
-    0%   { background-position: -200% center; }
-    100% { background-position: 200% center; }
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
   }
 
-  .login-input:focus {
-    outline: none;
-    border-color: #1DB954 !important;
-    box-shadow: 0 0 0 3px rgba(29, 185, 84, 0.15), inset 0 1px 2px rgba(0,0,0,0.4) !important;
-  }
-  .login-input::placeholder { color: #4a4a4a; }
-  .login-input option { background: #121212; color: #fff; }
+  .auth-card { animation: fadeUp 0.4s ease both; }
 
-  .role-btn {
-    cursor: pointer;
-    transition: all 0.2s ease;
-    background: transparent;
-    border: 1px solid #2a2a2a;
-    border-radius: 8px;
-    padding: 12px 0;
-    color: #6a6a6a;
-    font-family: 'DM Mono', monospace;
-    font-size: 11px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    flex: 1;
-  }
-  .role-btn:hover {
-    border-color: #1DB954;
-    color: #1DB954;
-    background: rgba(29, 185, 84, 0.05);
-  }
-  .role-btn.active {
-    border-color: #1DB954;
-    color: #1DB954;
-    background: rgba(29, 185, 84, 0.1);
-  }
-
-  .signin-btn {
+  .auth-input {
     width: 100%;
-    padding: 15px;
-    background: linear-gradient(135deg, #1DB954 0%, #169a45 100%);
+    padding: 11px 13px;
+    background: #1a1a1a;
+    border: 0.5px solid #2a2a2a;
+    border-radius: 9px;
+    color: #e8ddd0;
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    box-sizing: border-box;
+  }
+
+  .auth-input:focus {
+    outline: none;
+    border-color: #1DB954;
+    box-shadow: 0 0 0 3px rgba(29,185,84,0.12);
+  }
+
+  .auth-input::placeholder { color: #3a3a3a; }
+  .auth-input option { background: #1a1a1a; }
+
+  .submit-btn {
+    width: 100%;
     border: none;
-    border-radius: 8px;
+    border-radius: 9px;
+    padding: 13px;
+    background: #1DB954;
     color: #000;
     font-family: 'DM Serif Display', serif;
     font-size: 16px;
-    letter-spacing: 0.04em;
     cursor: pointer;
-    position: relative;
-    overflow: hidden;
-    transition: all 0.25s ease;
+    transition: opacity 0.2s ease, transform 0.15s ease;
+    letter-spacing: 0.01em;
   }
-  .signin-btn::before {
-    content: '';
-    position: absolute;
-    top: 0; left: -100%;
-    width: 200%; height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
-    transition: left 0.5s ease;
-  }
-  .signin-btn:hover::before { left: 100%; }
-  .signin-btn:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 8px 24px rgba(29, 185, 84, 0.4);
-  }
-  .signin-btn:active { transform: translateY(0); }
-  .signin-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
-  .card-fade-1 { animation: fadeUp 0.5s ease both; }
-  .card-fade-2 { animation: fadeUp 0.5s ease 0.08s both; }
-  .card-fade-3 { animation: fadeUp 0.5s ease 0.16s both; }
-  .card-fade-4 { animation: fadeUp 0.5s ease 0.24s both; }
-  .card-fade-5 { animation: fadeUp 0.5s ease 0.32s both; }
-  .card-fade-6 { animation: fadeUp 0.5s ease 0.40s both; }
+  .submit-btn:hover:not(:disabled) {
+    opacity: 0.88;
+    transform: translateY(-1px);
+  }
+
+  .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 `;
-if (!document.head.querySelector('[data-login-styles]')) {
-  styleTag.setAttribute('data-login-styles', '');
+
+if (!document.head.querySelector("[data-auth-styles]")) {
+  styleTag.setAttribute("data-auth-styles", "");
   document.head.appendChild(styleTag);
 }
 
-// Vinyl SVG background
-const VinylBg = () => (
-  <svg
-    style={{ position: 'absolute', right: '-80px', top: '-80px', opacity: 0.05, pointerEvents: 'none' }}
-    width="400" height="400" viewBox="0 0 400 400"
-  >
-    {[10,30,50,70,90,110,130,150,170,190].map((r, i) => (
-      <circle key={i} cx="200" cy="200" r={r} fill="none" stroke="#1DB954" strokeWidth="1.5"/>
-    ))}
-    <circle cx="200" cy="200" r="30" fill="#1DB954" opacity="0.5"/>
-    <circle cx="200" cy="200" r="12" fill="#121212"/>
-  </svg>
-);
-
-// Waveform decoration
-const Waveform = () => {
-  const bars = [3,6,10,14,9,16,11,5,13,8,15,7,12,4,10,6,14,9,3,11];
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '3px', height: '24px', opacity: 0.5 }}>
-      {bars.map((h, i) => (
-        <div key={i} style={{
-          width: '2px',
-          height: `${h}px`,
-          backgroundColor: '#1DB954',
-          borderRadius: '1px',
-        }}/>
-      ))}
-    </div>
-  );
-};
-
 export const Login = ({ onLogin }) => {
-  const [email, setEmail] = useState('listener@example.com');
-  const [role, setRole] = useState('LISTENER');
-  const [error, setError] = useState('');
+  const [mode, setMode] = useState("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [fullName, setFullName] = useState("");
+  const [signupRole, setSignupRole] = useState("LISTENER");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const tokens = {
-    ARTIST:   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLTEyMyIsImVtYWlsIjoiYXJ0aXN0QGV4YW1wbGUuY29tIiwicm9sZSI6IkFSVElTVCJ9.kLQigrAdQBgQQYFxJ7T2sK4dtKKGyrUM8G-o31YOQGI',
-    LISTENER: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLTQ1NiIsImVtYWlsIjoibGlzdGVuZXJAZXhhbXBsZS5jb20iLCJyb2xlIjoiTElTVEVORVIifQ.Shgmn8LP1xh29qA0kFMnwOa1EnmajJapNiYHsOjLpVs'
+  const switchMode = (m) => {
+    setMode(m);
+    setError("");
+    setEmail("");
+    setPassword("");
+    setShowPassword(false);
+    setFullName("");
+    setSignupRole("LISTENER");
   };
 
-  const handleLogin = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
-    setLoading(true);
+    setError("");
 
-    if (!email || !role) {
-      setError('Please enter your email and select a role');
-      setLoading(false);
+    if (!email.trim() || !password.trim()) {
+      setError("Email and password are required.");
       return;
     }
 
-    const token = tokens[role];
+    if (mode === "signup" && signupRole === "ARTIST" && !fullName.trim()) {
+      setError("Full name is required for artist accounts.");
+      return;
+    }
 
+    setLoading(true);
     try {
-      const response = await fetch('http://localhost:4000/graphql', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ query: '{ stats { songs } }' }),
-      });
-
-      const data = await response.json();
-
-      if (data.errors) {
-        setError('Authentication failed. Please try again.');
-        setLoading(false);
-        return;
+      if (mode === "signin") {
+        const data = await fetchGraphQL(LOGIN_MUTATION, {
+          input: { email: email.trim(), password },
+        });
+        onLogin(data.login.token, data.login.role, data.login.email);
+      } else {
+        const data = await fetchGraphQL(SIGNUP_MUTATION, {
+          input: {
+            email: email.trim(),
+            password,
+            role: signupRole,
+            fullName: fullName.trim() || null,
+          },
+        });
+        onLogin(data.signup.token, data.signup.role, data.signup.email);
       }
-
-      onLogin(token, role, email);
     } catch (err) {
-      setError('Connection error. Is the API running on localhost:4000?');
+      setError(err.message || "Authentication failed.");
+    } finally {
       setLoading(false);
     }
   };
 
   const labelStyle = {
-    display: 'block',
-    marginBottom: '8px',
-    color: '#6a6a6a',
-    fontSize: '10px',
+    display: "block",
+    marginBottom: 7,
+    color: "#484848",
+    fontSize: "10px",
     fontFamily: "'DM Mono', monospace",
-    letterSpacing: '0.14em',
-    textTransform: 'uppercase',
-  };
-
-  const inputStyle = {
-    width: '100%',
-    padding: '13px 16px',
-    backgroundColor: '#1a1a1a',
-    border: '1px solid #2a2a2a',
-    borderRadius: '8px',
-    color: '#fff',
-    fontSize: '14px',
-    fontFamily: "'DM Mono', monospace",
-    boxSizing: 'border-box',
-    transition: 'border-color 0.2s, box-shadow 0.2s',
+    letterSpacing: "0.14em",
+    textTransform: "uppercase",
   };
 
   return (
-    <div style={{
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      minHeight: '100vh',
-      width: '100%',
-      backgroundColor: '#0a0a0a',
-      backgroundImage: `
-        radial-gradient(ellipse 60% 50% at 70% 20%, rgba(29,185,84,0.07) 0%, transparent 70%),
-        radial-gradient(ellipse 40% 60% at 20% 80%, rgba(29,185,84,0.04) 0%, transparent 70%)
-      `,
-      fontFamily: "'DM Serif Display', serif",
-    }}>
-      <div style={{
-        width: '100%',
-        maxWidth: '420px',
-        padding: '48px 44px',
-        backgroundColor: '#121212',
-        border: '1px solid #1e1e1e',
-        borderRadius: '16px',
-        position: 'relative',
-        overflow: 'hidden',
-        boxShadow: '0 32px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(29,185,84,0.06)',
-      }}>
-        {/* Vinyl background decoration */}
-        <VinylBg />
-
-        {/* Amber top-edge glow */}
-        <div style={{
-          position: 'absolute',
-          top: 0, left: '20%', right: '20%',
-          height: '1px',
-          background: 'linear-gradient(90deg, transparent, #1DB954, transparent)',
-          opacity: 0.6,
-        }}/>
-
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        minHeight: "100vh",
+        width: "100%",
+        backgroundColor: "#0a0a0a",
+      }}
+    >
+      <div
+        className="auth-card"
+        style={{
+          width: "100%",
+          maxWidth: 400,
+          padding: "40px 36px",
+          backgroundColor: "#121212",
+          border: "0.5px solid #222",
+          borderRadius: 18,
+        }}
+      >
         {/* Header */}
-        <div className="card-fade-1" style={{ textAlign: 'center', marginBottom: '40px' }}>
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
-            <Waveform />
-          </div>
-          <h1 style={{
-            fontSize: '36px',
-            fontWeight: 400,
-            color: '#e8ddd0',            margin: '0 0 6px',
-            letterSpacing: '-0.01em',
-            lineHeight: 1,
-          }}>
-            Music<span style={{ color: '#1DB954', fontStyle: 'italic' }}>DB</span>
-          </h1>
-          <p style={{
-            color: '#404040',
-            fontSize: '11px',
-            fontFamily: "'DM Mono', monospace",
-            letterSpacing: '0.18em',
-            textTransform: 'uppercase',
-            margin: 0,
-          }}>
-            Your music, your story
-          </p>
-        </div>
-
-        {/* Email field */}
-        <div className="card-fade-2" style={{ marginBottom: '20px' }}>
-          <label style={labelStyle}>Email address</label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
-            className="login-input"
-            style={inputStyle}
-          />
-        </div>
-
-        {/* Role selector */}
-        <div className="card-fade-3" style={{ marginBottom: '28px' }}>
-          <label style={labelStyle}>I am a</label>
-          <div style={{ display: 'flex', gap: '10px' }}>
-            {['LISTENER', 'ARTIST'].map((r) => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => setRole(r)}
-                className={`role-btn ${role === r ? 'active' : ''}`}
-              >
-                {r === 'LISTENER' ? '♫ Listener' : '✦ Artist'}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Error */}
-        {error && (
-          <div className="card-fade-4" style={{
-            marginBottom: '20px',
-            padding: '12px 16px',
-            backgroundColor: 'rgba(200,60,60,0.08)',
-            border: '1px solid rgba(200,60,60,0.2)',
-            borderRadius: '8px',
-            color: '#e07070',
-            fontSize: '12px',
-            fontFamily: "'DM Mono', monospace",
-          }}>
-            {error}
-          </div>
-        )}
-
-        {/* Submit */}
-        <div className="card-fade-5">
-          <button
-            className="signin-btn"
-            onClick={handleLogin}
-            disabled={loading}
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              marginBottom: 10,
+            }}
           >
-            {loading ? 'Signing in…' : 'Sign In'}
-          </button>
-        </div>
-
-        {/* Footer hint */}
-        <div className="card-fade-6" style={{
-          marginTop: '28px',
-          paddingTop: '20px',
-          borderTop: '1px solid #1e1e1e',
-          textAlign: 'center',
-        }}>
-          <p style={{
-            color: '#333',
-            fontSize: '10px',
-            fontFamily: "'DM Mono', monospace",
-            letterSpacing: '0.1em',
-            margin: 0,
-          }}>
-            Demo — use any email with either role
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+              <circle
+                cx="11"
+                cy="11"
+                r="10.25"
+                stroke="#1DB954"
+                strokeWidth="0.5"
+              />
+              <path d="M8 7.5v7l7-3.5-7-3.5z" fill="#1DB954" />
+            </svg>
+            <span
+              style={{
+                fontFamily: "'DM Serif Display', serif",
+                fontSize: 24,
+                color: "#e8ddd0",
+                fontWeight: 400,
+              }}
+            >
+              Music
+              <span style={{ color: "#1DB954", fontStyle: "italic" }}>DB</span>
+            </span>
+          </div>
+          <p
+            style={{
+              color: "#333",
+              margin: 0,
+              fontSize: 10,
+              letterSpacing: "0.18em",
+              textTransform: "uppercase",
+              fontFamily: "'DM Mono', monospace",
+            }}
+          >
+            {mode === "signin" ? "sign in to continue" : "create your account"}
           </p>
         </div>
+
+        {/* Form */}
+        <form
+          onSubmit={handleSubmit}
+          style={{ display: "flex", flexDirection: "column", gap: 14 }}
+        >
+          {/* Signup-only: Full Name (first) */}
+          {mode === "signup" && (
+            <div>
+              <label style={labelStyle}>Full Name</label>
+              <input
+                className="auth-input"
+                type="text"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Your full name"
+                autoComplete="name"
+              />
+            </div>
+          )}
+
+          {/* Email */}
+          <div>
+            <label style={labelStyle}>Email</label>
+            <input
+              className="auth-input"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              autoComplete="email"
+            />
+          </div>
+
+          {/* Password */}
+          <div>
+            <label style={labelStyle}>Password</label>
+            <div style={{ position: "relative" }}>
+              <input
+                className="auth-input"
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={
+                  mode === "signin" ? "Your password" : "Create a password"
+                }
+                autoComplete={
+                  mode === "signin" ? "current-password" : "new-password"
+                }
+                style={{ paddingRight: 42 }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                style={{
+                  position: "absolute",
+                  right: 12,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  color: "#484848",
+                  transition: "color 0.2s ease",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = "#1DB954")}
+                onMouseLeave={(e) => (e.currentTarget.style.color = "#484848")}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? (
+                  /* Eye OPEN — password is visible */
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                ) : (
+                  /* Eye CLOSED — password is hidden */
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                    <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                    <line x1="1" y1="1" x2="23" y2="23" />
+                  </svg>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Signup-only: Role */}
+          {mode === "signup" && (
+            <div>
+              <label style={labelStyle}>I am a…</label>
+              <select
+                className="auth-input"
+                value={signupRole}
+                onChange={(e) => setSignupRole(e.target.value)}
+              >
+                <option value="LISTENER">Listener</option>
+                <option value="ARTIST">Artist</option>
+              </select>
+            </div>
+          )}
+
+          {/* Error */}
+          {error && (
+            <div
+              style={{
+                padding: "11px 13px",
+                borderRadius: 8,
+                background: "rgba(224,85,85,0.08)",
+                border: "0.5px solid rgba(224,85,85,0.22)",
+                color: "#c97070",
+                fontSize: 11,
+                fontFamily: "'DM Mono', monospace",
+              }}
+            >
+              {error}
+            </div>
+          )}
+
+          {/* Submit */}
+          <button
+            type="submit"
+            className="submit-btn"
+            disabled={loading}
+            style={{ marginTop: 4 }}
+          >
+            {loading
+              ? "Please wait…"
+              : mode === "signin"
+                ? "Sign In"
+                : "Create Account"}
+          </button>
+        </form>
+
+        {/* Switch mode */}
+        <p
+          style={{
+            textAlign: "center",
+            marginTop: 16,
+            fontSize: 11,
+            color: "#333",
+            fontFamily: "'DM Mono', monospace",
+            letterSpacing: "0.06em",
+          }}
+        >
+          {mode === "signin" ? "New here? " : "Already have one? "}
+          <a
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              switchMode(mode === "signin" ? "signup" : "signin");
+            }}
+            style={{ color: "#1DB954", textDecoration: "none" }}
+          >
+            {mode === "signin" ? "Create account" : "Sign in"}
+          </a>
+        </p>
       </div>
     </div>
   );

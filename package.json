@@ -8,6 +8,7 @@
     "start": "node prisma/src/index.js",
     "seed": "node prisma/seed.js",
     "seed-spotify": "node prisma/seed-spotify.js",
+    "backfill:auth": "node prisma/scripts/backfill-auth.js",
     "studio": "npx prisma studio"
   },
   "keywords": [],
@@ -19,6 +20,7 @@
     "@graphql-tools/schema": "^10.0.31",
     "@prisma/adapter-pg": "^7.6.0",
     "@prisma/client": "^7.6.0",
+    "bcryptjs": "^3.0.3",
     "csv-parser": "^3.0.0",
     "dataloader": "^2.2.3",
     "dotenv": "^17.3.1",

@@ -180,6 +180,37 @@ const Pagination = ({ skip, perPage, onPrev, onNext, disableNext }) => (
   </div>
 );
 
+const SortControls = ({ field, direction, onFieldChange, onDirectionChange, options }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <select
+      value={field}
+      onChange={(e) => onFieldChange(e.target.value)}
+      style={{
+        background: '#121212',
+        color: '#aaa',
+        border: '1px solid #2a2a2a',
+        borderRadius: 8,
+        padding: '8px 10px',
+        fontFamily: "'DM Mono', monospace",
+        fontSize: '11px',
+        letterSpacing: '0.04em',
+      }}
+    >
+      {options.map((opt) => (
+        <option key={opt.value} value={opt.value}>{opt.label}</option>
+      ))}
+    </select>
+    <button
+      className="pg-btn"
+      onClick={() => onDirectionChange(direction === 'asc' ? 'desc' : 'asc')}
+      style={{ padding: '8px 12px' }}
+      title="Toggle sort direction"
+    >
+      {direction === 'asc' ? 'ASC' : 'DESC'}
+    </button>
+  </div>
+);
+
 // ─── Dashboard ──────────────────────────────────────────────────────────────
 
 export const Dashboard = ({ token }) => {
@@ -242,11 +273,23 @@ export const Songs = ({ token, role, onSongClick }) => {
   const [loading, setLoading] = useState(true);
   const [skip, setSkip] = useState(0);
   const [hasMore, setHasMore] = useState(false);
+  const [sortField, setSortField] = useState('createdAt');
+  const [sortDirection, setSortDirection] = useState('asc');
   const PER_PAGE = 15;
+
+  const songSortOptions = [
+    { value: 'createdAt', label: 'Newest' },
+    { value: 'title', label: 'Title' },
+    { value: 'popularity', label: 'Popularity' },
+  ];
 
   useEffect(() => {
     setLoading(true);
-    fetchGraphQL(SONGS_QUERY, { skip, take: PER_PAGE + 1 }, token)
+    fetchGraphQL(SONGS_QUERY, {
+      skip,
+      take: PER_PAGE + 1,
+      sort: { field: sortField, direction: sortDirection },
+    }, token)
       .then(d => {
         const pageSongs = d.songs || [];
         setHasMore(pageSongs.length > PER_PAGE);
@@ -258,7 +301,7 @@ export const Songs = ({ token, role, onSongClick }) => {
         setHasMore(false);
       })
       .finally(() => setLoading(false));
-  }, [skip, token]);
+  }, [skip, token, sortField, sortDirection]);
 
   const fmt = (ms) => {
     const m = Math.floor(ms / 60000);
@@ -271,6 +314,15 @@ export const Songs = ({ token, role, onSongClick }) => {
       <PageHeader
         title="Songs"
         subtitle={`${skip + 1}–${skip + songs.length} of many`}
+        action={
+          <SortControls
+            field={sortField}
+            direction={sortDirection}
+            onFieldChange={(v) => { setSortField(v); setSkip(0); }}
+            onDirectionChange={(v) => { setSortDirection(v); setSkip(0); }}
+            options={songSortOptions}
+          />
+        }
       />
       <div style={{ padding: '28px 32px' }}>
         {loading ? <LoadingState label="Loading songs" /> : (
@@ -378,11 +430,22 @@ export const Artists = ({ token }) => {
   const [loading, setLoading] = useState(true);
   const [skip, setSkip] = useState(0);
   const [hasMore, setHasMore] = useState(false);
+  const [sortField, setSortField] = useState('name');
+  const [sortDirection, setSortDirection] = useState('asc');
   const PER_PAGE = 21;
+
+  const artistSortOptions = [
+    { value: 'name', label: 'Name' },
+    { value: 'createdAt', label: 'Created' },
+  ];
 
   useEffect(() => {
     setLoading(true);
-    fetchGraphQL(ARTISTS_QUERY, { skip, take: PER_PAGE + 1 }, token)
+    fetchGraphQL(ARTISTS_QUERY, {
+      skip,
+      take: PER_PAGE + 1,
+      sort: { field: sortField, direction: sortDirection },
+    }, token)
       .then(d => {
         const pageArtists = d.artists || [];
         setHasMore(pageArtists.length > PER_PAGE);
@@ -390,11 +453,23 @@ export const Artists = ({ token }) => {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [skip, token]);
+  }, [skip, token, sortField, sortDirection]);
 
   return (
     <div style={{ width: '100%' }}>
-      <PageHeader title="Artists" subtitle="Browse all artists in the database" />
+      <PageHeader
+        title="Artists"
+        subtitle="Browse all artists in the database"
+        action={
+          <SortControls
+            field={sortField}
+            direction={sortDirection}
+            onFieldChange={(v) => { setSortField(v); setSkip(0); }}
+            onDirectionChange={(v) => { setSortDirection(v); setSkip(0); }}
+            options={artistSortOptions}
+          />
+        }
+      />
       <div style={{ padding: '28px 32px' }}>
         {loading ? <LoadingState label="Loading artists" /> : (
           <>
@@ -433,7 +508,7 @@ export const Artists = ({ token }) => {
                       letterSpacing: '0.1em',
                       color,
                       margin: 0,
-                    }}>{artist.songs.length} songs</p>
+                    }}>{artist.songCount} songs</p>
                   </div>
                 );
               })}
@@ -461,22 +536,52 @@ export const Genres = ({ token }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [skip, setSkip] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [sortField, setSortField] = useState('name');
+  const [sortDirection, setSortDirection] = useState('asc');
   const PER_PAGE = 18;
+
+  const genreSortOptions = [
+    { value: 'name', label: 'Name' },
+    { value: 'createdAt', label: 'Created' },
+  ];
 
   useEffect(() => {
     setLoading(true);
     setError(null);
-    fetchGraphQL(GENRES_QUERY, { skip, take: PER_PAGE }, token)
-      .then(d => setGenres(d.genres || []))
-      .catch(err => { setError(err.message); setGenres([]); })
+    fetchGraphQL(GENRES_QUERY, {
+      skip,
+      take: PER_PAGE + 1,
+      sort: { field: sortField, direction: sortDirection },
+    }, token)
+      .then(d => {
+        const pageGenres = d.genres || [];
+        setHasMore(pageGenres.length > PER_PAGE);
+        setGenres(pageGenres.slice(0, PER_PAGE));
+      })
+      .catch(err => {
+        setError(err.message);
+        setGenres([]);
+        setHasMore(false);
+      })
       .finally(() => setLoading(false));
-  }, [skip, token]);
-
-  const hasMore = genres.length === PER_PAGE;
+  }, [skip, token, sortField, sortDirection]);
 
   return (
     <div style={{ width: '100%' }}>
-      <PageHeader title="Genres" subtitle="All music genres in the database" />
+      <PageHeader
+        title="Genres"
+        subtitle="All music genres in the database"
+        action={
+          <SortControls
+            field={sortField}
+            direction={sortDirection}
+            onFieldChange={(v) => { setSortField(v); setSkip(0); }}
+            onDirectionChange={(v) => { setSortDirection(v); setSkip(0); }}
+            options={genreSortOptions}
+          />
+        }
+      />
       <div style={{ padding: '28px 32px' }}>
         {error && (
           <div style={{
@@ -519,7 +624,7 @@ export const Genres = ({ token }) => {
                       letterSpacing: '0.1em',
                       color: accent,
                       margin: 0,
-                    }}>{genre.songs.length} songs</p>
+                    }}>{genre.songCount} songs</p>
                   </div>
                 );
               })}

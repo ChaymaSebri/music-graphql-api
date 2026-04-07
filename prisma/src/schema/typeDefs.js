@@ -7,6 +7,7 @@ module.exports = gql`
   type Listener {
     id:        ID!
     email:     String!
+    fullName:  String
     playlists: [Playlist!]
     reviews:   [Review!]
     createdAt: DateTime!
@@ -16,6 +17,7 @@ module.exports = gql`
   type Genre {
     id:        ID!
     name:      String!
+    songCount: Int!
     songs(take: Int, skip: Int): [Song!]
     createdAt: DateTime!
     updatedAt: DateTime!
@@ -25,6 +27,8 @@ module.exports = gql`
     id:        ID!
     name:      String!
     email:     String!
+    songCount: Int!
+    albumCount: Int!
     albums(take: Int, skip: Int): [Album!]
     songs(take: Int, skip: Int): [Song!]
     createdAt: DateTime!
@@ -36,6 +40,7 @@ module.exports = gql`
     title:     String!
     releaseYear: Int!
     artist:    Artist!
+    songCount: Int!
     songs(take: Int, skip: Int): [Song!]
     createdAt: DateTime!
     updatedAt: DateTime!
@@ -50,6 +55,7 @@ module.exports = gql`
     genre:     Genre!
     explicit:  Boolean
     popularity: Int
+    reviewCount: Int!
     reviews(take: Int, skip: Int): [Review!]
     createdAt: DateTime!
     updatedAt: DateTime!
@@ -60,6 +66,7 @@ module.exports = gql`
     name:       String!
     description: String
     listener:   Listener!
+    songCount:  Int!
     songs(take: Int, skip: Int): [Song!]
     createdAt:  DateTime!
     updatedAt:  DateTime!
@@ -84,25 +91,78 @@ module.exports = gql`
     reviews:   Int!
   }
 
+  type AuthPayload {
+    token: String!
+    role: String!
+    email: String!
+  }
+
+  enum UserRole {
+    ARTIST
+    LISTENER
+  }
+
+  enum SortDirection {
+    asc
+    desc
+  }
+
+  enum GenreSortField {
+    name
+    createdAt
+  }
+
+  enum ArtistSortField {
+    id
+    name
+    createdAt
+  }
+
+  enum AlbumSortField {
+    id
+    title
+    releaseYear
+    createdAt
+  }
+
+  enum SongSortField {
+    id
+    title
+    popularity
+    createdAt
+  }
+
+  enum PlaylistSortField {
+    id
+    name
+    createdAt
+  }
+
+  enum ReviewSortField {
+    id
+    score
+    createdAt
+  }
+
   # ── QUERIES ──────────────────────────────────────
   type Query {
     me: Listener!
 
-    genres(take: Int, skip: Int): [Genre!]!
+    genres(take: Int, skip: Int, sort: GenreSortInput): [Genre!]!
 
-    artists(take: Int, skip: Int, filter: ArtistListFilter): [Artist!]!
+    artists(take: Int, skip: Int, filter: ArtistListFilter, sort: ArtistSortInput): [Artist!]!
     artist(id: ID!): Artist
 
-    albums(take: Int, skip: Int): [Album!]!
+    albums(take: Int, skip: Int, sort: AlbumSortInput): [Album!]!
     album(id:  ID!): Album
 
-    songs(take: Int, skip: Int, filter: SongListFilter): [Song!]!
+    songs(take: Int, skip: Int, filter: SongListFilter, sort: SongSortInput): [Song!]!
     song(id:   ID!): Song
 
-    playlists(take: Int, skip: Int): [Playlist!]!
+    playlists(take: Int, skip: Int, sort: PlaylistSortInput): [Playlist!]!
     playlist(id: ID!): Playlist
 
-    reviews(songId: ID!, take: Int, skip: Int): [Review!]!
+    reviews(songId: ID!, take: Int, skip: Int, sort: ReviewSortInput): [Review!]!
 
     stats: Statistics!
   }
@@ -117,6 +177,36 @@ module.exports = gql`
     artistName: String
     genreId: ID
     artistId: ID
+  }
+
+  input GenreSortInput {
+    field: GenreSortField!
+    direction: SortDirection!
+  }
+
+  input ArtistSortInput {
+    field: ArtistSortField!
+    direction: SortDirection!
+  }
+
+  input AlbumSortInput {
+    field: AlbumSortField!
+    direction: SortDirection!
+  }
+
+  input SongSortInput {
+    field: SongSortField!
+    direction: SortDirection!
+  }
+
+  input PlaylistSortInput {
+    field: PlaylistSortField!
+    direction: SortDirection!
+  }
+
+  input ReviewSortInput {
+    field: ReviewSortField!
+    direction: SortDirection!
   }
 
   input AddGenreInput {
@@ -202,12 +292,27 @@ module.exports = gql`
     songId: ID!
   }
 
+  input LoginInput {
+    email: String!
+    password: String!
+  }
+
+  input SignupInput {
+    email: String!
+    password: String!
+    role: UserRole!
+    fullName: String
+  }
+
   input DeleteReviewInput {
     id: ID!
   }
 
   # ── MUTATIONS ────────────────────────────────────
   type Mutation {
+    login(input: LoginInput!): AuthPayload!
+    signup(input: SignupInput!): AuthPayload!
+
     addGenre(input: AddGenreInput!): Genre!
     deleteGenre(input: DeleteGenreInput!): Boolean!
 

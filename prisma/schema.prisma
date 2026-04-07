@@ -9,6 +9,8 @@ datasource db {
 model Listener {
   id        Int      @id @default(autoincrement())
   email     String   @unique
+  fullName  String?
+  passwordHash String?
   playlists Playlist[]
   reviews   Review[]
   createdAt DateTime @default(now())
@@ -27,6 +29,7 @@ model Artist {
   id        Int      @id @default(autoincrement())
   name      String   @unique
   email     String   @unique  // Auto-generated: artist{id}@musicdb.com
+  passwordHash String?
   albums    Album[]
   songs     Song[]
   createdAt DateTime @default(now())

@@ -7,7 +7,6 @@ import {
   GET_MY_REVIEWS,
   DELETE_PLAYLIST_MUTATION,
   DELETE_REVIEW_MUTATION,
-  REMOVE_SONG_FROM_PLAYLIST_MUTATION,
   UPDATE_PLAYLIST_MUTATION,
 } from '../graphql/api.js';
 
@@ -376,12 +375,6 @@ export const MyPlaylists = ({ token }) => {
     } finally { setDeleting(null); }
   };
 
-  const handleRemoveSong = async (playlistId, songId, songTitle) => {
-    if (!window.confirm(`Remove "${songTitle}"?`)) return;
-    await fetchGraphQL(REMOVE_SONG_FROM_PLAYLIST_MUTATION, { input: { playlistId, songId } }, token);
-    setPlaylists(p => p.map(pl => pl.id === playlistId ? { ...pl, songs: pl.songs.filter(s => s.id !== songId) } : pl));
-  };
-
   const handleUpdate = async () => {
     if (!editForm.name.trim()) return alert('Name required');
     const result = await fetchGraphQL(UPDATE_PLAYLIST_MUTATION, { input: { id: editingId, name: editForm.name.trim(), description: editForm.description.trim() || null } }, token);
@@ -427,7 +420,7 @@ export const MyPlaylists = ({ token }) => {
                           <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '17px', color: '#e8e8e8' }}>{pl.name}</span>
                         </div>
                         <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: '#444', margin: '4px 0 0 24px', letterSpacing: '0.08em' }}>
-                          {pl.songs.length} song{pl.songs.length !== 1 ? 's' : ''}
+                          {pl.songCount} song{pl.songCount !== 1 ? 's' : ''}
                           {pl.description && <span style={{ color: '#2e2e2e' }}> · {pl.description}</span>}
                         </p>
                       </button>
@@ -449,22 +442,8 @@ export const MyPlaylists = ({ token }) => {
 
                     {/* Expanded songs */}
                     {expandedPlaylist === pl.id && (
-                      <div style={{ borderTop: '1px solid #1a1a1a', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {pl.songs.length === 0 ? (
-                          <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: '#333', padding: '8px 0' }}>No songs yet.</p>
-                        ) : pl.songs.map(song => (
-                          <div key={song.id} className="song-row-sm">
-                            <div style={{ minWidth: 0 }}>
-                              <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '14px', color: '#ddd', margin: '0 0 2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{song.title}</p>
-                              <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', color: '#444', margin: 0 }}>
-                                <span style={{ color: '#1DB954' }}>{song.artist.name}</span>
-                                <span style={{ margin: '0 6px', color: '#2a2a2a' }}>·</span>
-                                {fmt(song.duration)}
-                              </p>
-                            </div>
-                            <button className="btn-danger" onClick={() => handleRemoveSong(pl.id, song.id, song.title)}>Remove</button>
-                          </div>
-                        ))}
+                      <div style={{ borderTop: '1px solid #1a1a1a', padding: '16px', textAlign: 'center' }}>
+                        <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: '#666', margin: 0 }}>Containing {pl.songCount} song{pl.songCount !== 1 ? 's' : ''} — Open playlist to see details</p>
                       </div>
                     )}
                   </>

@@ -1,6 +1,8 @@
 const { prisma }  = require('../db');
 const { pubsub }  = require('../pubsub');
 const { GraphQLError } = require('graphql');
+const bcrypt = require('bcryptjs');
+const { signAuthToken } = require('../auth');
 
 function trimOrNull(value) {
   if (value == null) return null;
@@ -40,6 +42,26 @@ function parsePositiveId(value, fieldName) {
     });
   }
   return parsed;
+}
+
+function assertEmail(value) {
+  const email = String(value || '').trim().toLowerCase();
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    throw new GraphQLError('A valid email is required', {
+      extensions: { code: 'BAD_USER_INPUT' },
+    });
+  }
+  return email;
+}
+
+function assertPassword(value) {
+  if (typeof value !== 'string' || value.length < 6) {
+    throw new GraphQLError('Password must be at least 6 characters', {
+      extensions: { code: 'BAD_USER_INPUT' },
+    });
+  }
+  return value;
 }
 
 /**
@@ -145,6 +167,101 @@ function formatPrismaError(error) {
 }
 
 const mutationResolvers = {
+  // ── Auth ──
+  login: async (_, { input }) => {
+    const email = assertEmail(input.email);
+    const password = assertPassword(input.password);
+
+    const artist = await prisma.artist.findUnique({
+      where: { email },
+      select: { id: true, email: true, passwordHash: true },
+    });
+    const listener = artist
+      ? null
+      : await prisma.listener.findUnique({
+          where: { email },
+          select: { id: true, email: true, passwordHash: true },
+        });
+
+    const account = artist || listener;
+    const role = artist ? 'ARTIST' : listener ? 'LISTENER' : null;
+
+    if (!account || !account.passwordHash) {
+      throw new GraphQLError('Invalid email or password', {
+        extensions: { code: 'UNAUTHENTICATED' },
+      });
+    }
+
+    const isMatch = await bcrypt.compare(password, account.passwordHash);
+    if (!isMatch) {
+      throw new GraphQLError('Invalid email or password', {
+        extensions: { code: 'UNAUTHENTICATED' },
+      });
+    }
+
+    const token = signAuthToken({
+      sub: String(account.id),
+      email: account.email,
+      role,
+    });
+
+    return { token, role, email: account.email };
+  },
+
+  signup: async (_, { input }) => {
+    const email = assertEmail(input.email);
+    const password = assertPassword(input.password);
+    const role = input.role;
+
+    if (role !== 'ARTIST' && role !== 'LISTENER') {
+      throw new GraphQLError('Invalid role', {
+        extensions: { code: 'BAD_USER_INPUT' },
+      });
+    }
+
+    const existingArtist = await prisma.artist.findUnique({ where: { email }, select: { id: true } });
+    const existingListener = await prisma.listener.findUnique({ where: { email }, select: { id: true } });
+    if (existingArtist || existingListener) {
+      throw new GraphQLError('An account with this email already exists', {
+        extensions: { code: 'BAD_USER_INPUT' },
+      });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    let created;
+    if (role === 'ARTIST') {
+      const artistName = String(input.fullName || '').replace(/\s+/g, ' ').trim();
+      assertNonEmptyString(artistName, 'fullName');
+      created = await prisma.artist.create({
+        data: {
+          name: artistName,
+          email,
+          passwordHash,
+        },
+        select: { id: true, email: true },
+      });
+    } else {
+      const listenerName = trimOrNull(input.fullName) || null;
+      created = await prisma.listener.create({
+        data: {
+          email,
+          fullName: listenerName,
+          passwordHash,
+        },
+        select: { id: true, email: true },
+      });
+    }
+
+    const token = signAuthToken({
+      sub: String(created.id),
+      email: created.email,
+      role,
+    });
+
+    return { token, role, email: created.email };
+  },
+
   // ── Genre ── (ARTIST ONLY)
   addGenre: async (_, { input }, { user }) => {
     requireArtist(user);

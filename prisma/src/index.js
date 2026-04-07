@@ -16,7 +16,7 @@ const subscriptions = require('./resolvers/subscriptions');
 const fieldResolvers = require('./resolvers/fieldResolvers');
 const { createLoaders } = require('./loaders');
 const { getUserFromHttpRequest, getUserFromWsContext } = require('./auth');
-const { clientCredentialsMiddleware } = require('./clientAuth');
+const { requireClientCredentials } = require('./clientAuth');
 
 // Create base schema
 const schema = makeExecutableSchema({
@@ -63,8 +63,8 @@ async function start() {
     credentials: true,
   }));
 
-  // Add client credentials middleware (validates X-Client-ID and X-Client-Secret headers)
-  app.use(clientCredentialsMiddleware);
+  // Enforce client credentials for GraphQL HTTP requests.
+  app.use(requireClientCredentials);
 
   // GraphQL endpoint
   app.use('/graphql', express.json(), expressMiddleware(server, {

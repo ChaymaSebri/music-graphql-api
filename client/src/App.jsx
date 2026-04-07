@@ -61,6 +61,18 @@ export const MainApp = () => {
 
   const { isAuthenticated, token, role, login, logout } = useAuth();
 
+  const handleLoginSuccess = (jwtToken, userRole, userEmail) => {
+    login(jwtToken, userRole, userEmail);
+    setActivePage('dashboard');
+    setSelectedSong(null);
+  };
+
+  const handleLogout = () => {
+    logout();
+    setActivePage('dashboard');
+    setSelectedSong(null);
+  };
+
   const loadMyPlaylists = async () => {
     try {
       const data = await fetchGraphQL(GET_MY_PLAYLISTS, {}, token);
@@ -74,7 +86,7 @@ export const MainApp = () => {
     if (role === 'LISTENER') loadMyPlaylists();
   }, [role, token]);
 
-  if (!isAuthenticated) return <Login onLogin={login} />;
+  if (!isAuthenticated) return <Login onLogin={handleLoginSuccess} />;
 
   const handleAddToPlaylist = async (songId, playlistId, newPlaylistName, newPlaylistDescription) => {
     try {
@@ -129,7 +141,7 @@ export const MainApp = () => {
 
   return (
     <div style={{ display: 'flex', width: '100%', height: '100vh', backgroundColor: theme.colors.darkBg }}>
-      <Sidebar activePage={activePage} setActivePage={setActivePage} onLogout={logout} role={role} />
+      <Sidebar activePage={activePage} setActivePage={setActivePage} onLogout={handleLogout} role={role} />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', width: '100%' }}>
         <div style={{ flex: 1, overflowY: 'auto', width: '100%' }}>{renderPage()}</div>
       </div>

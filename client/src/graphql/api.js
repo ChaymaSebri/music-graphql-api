@@ -1,10 +1,65 @@
-export const fetchGraphQL = async (query, variables = {}, token) => {
+const queryCache = new Map();
+const inFlightRequests = new Map();
+const DEFAULT_CACHE_TTL_MS = 20_000;
+const CLIENT_ID = import.meta.env.VITE_CLIENT_ID || 'web_client';
+const CLIENT_SECRET = import.meta.env.VITE_CLIENT_SECRET || 'web_secret_key_abc123xyz789';
+
+function getOperationType(query) {
+  const normalized = String(query || '').trim().toLowerCase();
+  if (normalized.startsWith('mutation')) return 'mutation';
+  if (normalized.startsWith('query')) return 'query';
+  return 'unknown';
+}
+
+function buildCacheKey(query, variables, token) {
+  return JSON.stringify({ query, variables, token: token || '' });
+}
+
+function getCachedValue(cacheKey) {
+  const cached = queryCache.get(cacheKey);
+  if (!cached) return null;
+  if (Date.now() > cached.expiresAt) {
+    queryCache.delete(cacheKey);
+    return null;
+  }
+  return cached.value;
+}
+
+export const clearGraphQLCache = () => {
+  queryCache.clear();
+};
+
+export const fetchGraphQL = async (query, variables = {}, token, options = {}) => {
+  const { ttlMs = DEFAULT_CACHE_TTL_MS, bypassCache = false } = options;
+  const operationType = getOperationType(query);
+  const shouldUseCache = operationType === 'query' && !bypassCache;
+  const cacheKey = buildCacheKey(query, variables, token);
+
+  if (shouldUseCache) {
+    const cachedValue = getCachedValue(cacheKey);
+    if (cachedValue) {
+      return cachedValue;
+    }
+
+    const existingInFlight = inFlightRequests.get(cacheKey);
+    if (existingInFlight) {
+      return existingInFlight;
+    }
+  }
+
+  const requestPromise = (async () => {
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Client-ID': CLIENT_ID,
+    'X-Client-Secret': CLIENT_SECRET,
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
   const response = await fetch('http://localhost:4000/graphql', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
+    headers,
     body: JSON.stringify({ query, variables }),
   });
 
@@ -12,12 +67,52 @@ export const fetchGraphQL = async (query, variables = {}, token) => {
   if (data.errors) {
     throw new Error(data.errors[0].message);
   }
+  if (operationType === 'mutation') {
+    clearGraphQLCache();
+  }
   return data.data;
+  })();
+
+  if (!shouldUseCache) {
+    return requestPromise;
+  }
+
+  inFlightRequests.set(cacheKey, requestPromise);
+  try {
+    const result = await requestPromise;
+    queryCache.set(cacheKey, {
+      value: result,
+      expiresAt: Date.now() + ttlMs,
+    });
+    return result;
+  } finally {
+    inFlightRequests.delete(cacheKey);
+  }
 };
 
+export const LOGIN_MUTATION = `
+  mutation Login($input: LoginInput!) {
+    login(input: $input) {
+      token
+      role
+      email
+    }
+  }
+`;
+
+export const SIGNUP_MUTATION = `
+  mutation Signup($input: SignupInput!) {
+    signup(input: $input) {
+      token
+      role
+      email
+    }
+  }
+`;
+
 export const SONGS_QUERY = `
-  query GetSongs($skip: Int, $take: Int) {
-    songs(skip: $skip, take: $take) {
+  query GetSongs($skip: Int, $take: Int, $sort: SongSortInput) {
+    songs(skip: $skip, take: $take, sort: $sort) {
       id
       title
       duration
@@ -30,21 +125,21 @@ export const SONGS_QUERY = `
 `;
 
 export const ARTISTS_QUERY = `
-  query GetArtists($skip: Int, $take: Int) {
-    artists(skip: $skip, take: $take) {
+  query GetArtists($skip: Int, $take: Int, $sort: ArtistSortInput) {
+    artists(skip: $skip, take: $take, sort: $sort) {
       id
       name
-      songs { id }
+      songCount
     }
   }
 `;
 
 export const GENRES_QUERY = `
-  query GetGenres($skip: Int, $take: Int) {
-    genres(skip: $skip, take: $take) {
+  query GetGenres($skip: Int, $take: Int, $sort: GenreSortInput) {
+    genres(skip: $skip, take: $take, sort: $sort) {
       id
       name
-      songs { id }
+      songCount
     }
   }
 `;
@@ -91,12 +186,7 @@ export const GET_MY_PLAYLISTS = `
         id
         name
         description
-        songs {
-          id
-          title
-          duration
-          artist { name }
-        }
+        songCount
       }
     }
   }
@@ -200,7 +290,7 @@ export const MY_SONGS_QUERY = `
         duration
         popularity
         genre { id name }
-        reviews { id score }
+        reviewCount
       }
     }
   }
@@ -209,7 +299,7 @@ export const MY_SONGS_QUERY = `
 export const GET_TOTAL_SONGS_QUERY = `
   query GetTotalSongs($artistEmail: String!) {
     artists(filter: { email: $artistEmail }, skip: 0, take: 1) {
-      songs(take: 100) { id }
+      songCount
     }
   }
 `;
@@ -235,13 +325,7 @@ export const GET_MY_ALBUMS_QUERY = `
         id
         title
         releaseYear
-        artist { id name }
-        songs(take: 100) {
-          id
-          title
-          duration
-          genre { id name }
-        }
+        songCount
       }
     }
   }
@@ -250,7 +334,7 @@ export const GET_MY_ALBUMS_QUERY = `
 export const GET_TOTAL_ALBUMS_QUERY = `
   query GetTotalAlbums($artistEmail: String!) {
     artists(filter: { email: $artistEmail }, skip: 0, take: 1) {
-      albums(take: 100) { id }
+      albumCount
     }
   }
 `;

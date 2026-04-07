@@ -56,7 +56,7 @@ const CLIENT_METADATA = {
  * @param {Object} headers - HTTP headers from request
  * @returns {Object|null} - Client info if valid, null if invalid
  */
-export function validateClientCredentials(headers) {
+function validateClientCredentials(headers) {
   const clientId = headers['x-client-id'] || headers['x-client-id']?.toLowerCase()
   const clientSecret = headers['x-client-secret']
 
@@ -83,7 +83,7 @@ export function validateClientCredentials(headers) {
  * @param {string} adminSecret - Admin password to prevent unauthorized access
  * @returns {Array|null} - List of clients if authorized
  */
-export function listClients(adminSecret) {
+function listClients(adminSecret) {
   if (adminSecret !== process.env.ADMIN_SECRET) {
     return null
   }
@@ -102,7 +102,7 @@ export function listClients(adminSecret) {
  * @param {string} adminSecret - Admin password
  * @returns {boolean} - Success status
  */
-export function registerClient(clientId, clientSecret, adminSecret) {
+function registerClient(clientId, clientSecret, adminSecret) {
   if (adminSecret !== process.env.ADMIN_SECRET) {
     return false
   }
@@ -121,7 +121,7 @@ export function registerClient(clientId, clientSecret, adminSecret) {
  * @param {string} adminSecret - Admin password
  * @returns {boolean} - Success status
  */
-export function revokeClient(clientId, adminSecret) {
+function revokeClient(clientId, adminSecret) {
   if (adminSecret !== process.env.ADMIN_SECRET) {
     return false
   }
@@ -138,7 +138,7 @@ export function revokeClient(clientId, adminSecret) {
  * Express middleware to check client credentials
  * Falls back to JWT if no client credentials provided
  */
-export function clientCredentialsMiddleware(req, res, next) {
+function clientCredentialsMiddleware(req, res, next) {
   const clientInfo = validateClientCredentials(req.headers)
 
   if (clientInfo) {
@@ -155,7 +155,7 @@ export function clientCredentialsMiddleware(req, res, next) {
  * Strict client credentials middleware (no JWT fallback)
  * Use for specific endpoints that require client auth only
  */
-export function requireClientCredentials(req, res, next) {
+function requireClientCredentials(req, res, next) {
   const clientInfo = validateClientCredentials(req.headers)
 
   if (!clientInfo) {
@@ -174,7 +174,7 @@ export function requireClientCredentials(req, res, next) {
 // HELPER: Generate Example Curl Commands
 // ============================================
 
-export function generateCurlExamples() {
+function generateCurlExamples() {
   return `
 # Example 1: Web Client
 curl -X POST http://localhost:4000/graphql \\
@@ -199,3 +199,13 @@ curl -X POST http://localhost:4000/graphql \\
   -d '{"query":"mutation { addSong(input: {title:\\"Test\\"}) { id } }"}'
 `
 }
+
+module.exports = {
+  validateClientCredentials,
+  listClients,
+  registerClient,
+  revokeClient,
+  clientCredentialsMiddleware,
+  requireClientCredentials,
+  generateCurlExamples,
+};
