@@ -10,6 +10,7 @@ module.exports = gql`
     fullName:  String
     playlists: [Playlist!]
     reviews:   [Review!]
+    followedArtists: [Artist!]!
     createdAt: DateTime!
     updatedAt: DateTime!
   }
@@ -29,6 +30,8 @@ module.exports = gql`
     email:     String!
     songCount: Int!
     albumCount: Int!
+    followersCount: Int!
+    followedByMe: Boolean!
     albums(take: Int, skip: Int): [Album!]
     songs(take: Int, skip: Int): [Song!]
     createdAt: DateTime!
@@ -152,6 +155,7 @@ module.exports = gql`
 
     artists(take: Int, skip: Int, filter: ArtistListFilter, sort: ArtistSortInput): [Artist!]!
     artist(id: ID!): Artist
+    myFollowedArtists(take: Int, skip: Int, sort: ArtistSortInput): [Artist!]!
 
     albums(take: Int, skip: Int, sort: AlbumSortInput): [Album!]!
     album(id:  ID!): Album
@@ -308,6 +312,10 @@ module.exports = gql`
     id: ID!
   }
 
+  input FollowArtistInput {
+    artistId: ID!
+  }
+
   # ── MUTATIONS ────────────────────────────────────
   type Mutation {
     login(input: LoginInput!): AuthPayload!
@@ -336,6 +344,9 @@ module.exports = gql`
 
     addReview(input: AddReviewInput!): Review!
     deleteReview(input: DeleteReviewInput!): Boolean!
+
+    followArtist(input: FollowArtistInput!): Boolean!
+    unfollowArtist(input: FollowArtistInput!): Boolean!
   }
 
   # ── SUBSCRIPTIONS ────────────────────────────────
@@ -344,5 +355,8 @@ module.exports = gql`
     songDeleted:  ID!
     reviewAdded(songId: ID!): Review!
     artistAdded:  Artist!
+    artistSongAdded(artistId: ID!): Song!
+    artistAlbumAdded(artistId: ID!): Album!
+    reviewAddedForArtist(artistId: ID!): Review!
   }
 `;

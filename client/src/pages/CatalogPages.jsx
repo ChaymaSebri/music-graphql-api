@@ -1,6 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { theme } from '../styles/theme.js';
-import { fetchGraphQL, STATS_QUERY, SONGS_QUERY, ARTISTS_QUERY, GENRES_QUERY } from '../graphql/api.js';
+import {
+  fetchGraphQL,
+  STATS_QUERY,
+  SONGS_QUERY,
+  ARTISTS_QUERY,
+  MY_FOLLOWED_ARTISTS_QUERY,
+  GENRES_QUERY,
+  FOLLOW_ARTIST_MUTATION,
+  UNFOLLOW_ARTIST_MUTATION,
+} from '../graphql/api.js';
 import { icons } from '../constants/icons.jsx';
 
 // ─── Shared styles injected once ───────────────────────────────────────────
@@ -425,13 +434,14 @@ export const Songs = ({ token, role, onSongClick }) => {
 
 const AVATAR_COLORS = ['#1DB954','#4db8ff','#c084fc','#fb923c','#f472b6','#34d399'];
 
-export const Artists = ({ token }) => {
+export const Artists = ({ token, role, onFollowChanged }) => {
   const [artists, setArtists] = useState([]);
   const [loading, setLoading] = useState(true);
   const [skip, setSkip] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [sortField, setSortField] = useState('name');
   const [sortDirection, setSortDirection] = useState('asc');
+  const [artistFilter, setArtistFilter] = useState('all');
   const PER_PAGE = 21;
 
   const artistSortOptions = [
@@ -441,19 +451,51 @@ export const Artists = ({ token }) => {
 
   useEffect(() => {
     setLoading(true);
-    fetchGraphQL(ARTISTS_QUERY, {
+    const showFollowedOnly = role === 'LISTENER' && artistFilter === 'followed';
+    const query = showFollowedOnly ? MY_FOLLOWED_ARTISTS_QUERY : ARTISTS_QUERY;
+
+    fetchGraphQL(query, {
       skip,
       take: PER_PAGE + 1,
       sort: { field: sortField, direction: sortDirection },
     }, token)
       .then(d => {
-        const pageArtists = d.artists || [];
+        const pageArtists = showFollowedOnly ? (d.myFollowedArtists || []) : (d.artists || []);
         setHasMore(pageArtists.length > PER_PAGE);
         setArtists(pageArtists.slice(0, PER_PAGE));
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [skip, token, sortField, sortDirection]);
+  }, [skip, token, sortField, sortDirection, role, artistFilter]);
+
+  const toggleFollow = async (artist) => {
+    try {
+      if (artist.followedByMe) {
+        await fetchGraphQL(UNFOLLOW_ARTIST_MUTATION, { input: { artistId: artist.id } }, token);
+      } else {
+        await fetchGraphQL(FOLLOW_ARTIST_MUTATION, { input: { artistId: artist.id } }, token);
+      }
+
+      setArtists((prev) => prev.map((a) => {
+        if (a.id !== artist.id) return a;
+        const nextFollowed = !a.followedByMe;
+
+        if (artistFilter === 'followed' && !nextFollowed) {
+          return null;
+        }
+
+        return {
+          ...a,
+          followedByMe: nextFollowed,
+          followersCount: Math.max(0, (a.followersCount || 0) + (nextFollowed ? 1 : -1)),
+        };
+      }).filter(Boolean));
+
+      onFollowChanged?.();
+    } catch (err) {
+      alert(err.message || 'Unable to update follow state');
+    }
+  };
 
   return (
     <div style={{ width: '100%' }}>
@@ -461,13 +503,35 @@ export const Artists = ({ token }) => {
         title="Artists"
         subtitle="Browse all artists in the database"
         action={
-          <SortControls
-            field={sortField}
-            direction={sortDirection}
-            onFieldChange={(v) => { setSortField(v); setSkip(0); }}
-            onDirectionChange={(v) => { setSortDirection(v); setSkip(0); }}
-            options={artistSortOptions}
-          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {role === 'LISTENER' && (
+              <select
+                value={artistFilter}
+                onChange={(e) => { setArtistFilter(e.target.value); setSkip(0); }}
+                style={{
+                  background: '#121212',
+                  color: '#aaa',
+                  border: '1px solid #2a2a2a',
+                  borderRadius: 8,
+                  padding: '8px 10px',
+                  fontFamily: "'DM Mono', monospace",
+                  fontSize: '11px',
+                  letterSpacing: '0.04em',
+                }}
+                title="Filter artists"
+              >
+                <option value="all">All artists</option>
+                <option value="followed">Followed artists</option>
+              </select>
+            )}
+            <SortControls
+              field={sortField}
+              direction={sortDirection}
+              onFieldChange={(v) => { setSortField(v); setSkip(0); }}
+              onDirectionChange={(v) => { setSortDirection(v); setSkip(0); }}
+              options={artistSortOptions}
+            />
+          </div>
         }
       />
       <div style={{ padding: '28px 32px' }}>
@@ -509,6 +573,16 @@ export const Artists = ({ token }) => {
                       color,
                       margin: 0,
                     }}>{artist.songCount} songs</p>
+
+                    {role === 'LISTENER' && (
+                      <button
+                        className="pg-btn"
+                        onClick={() => toggleFollow(artist)}
+                        style={{ marginTop: 10, padding: '6px 10px', width: '100%' }}
+                      >
+                        {artist.followedByMe ? 'Following' : 'Follow'}
+                      </button>
+                    )}
                   </div>
                 );
               })}

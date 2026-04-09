@@ -162,7 +162,7 @@ const icons = {
   ),
 };
 
-export const Sidebar = ({ activePage, setActivePage, onLogout, role }) => {
+export const Sidebar = ({ activePage, setActivePage, onLogout, role, artistFollowerCount = 0 }) => {
   const coreItems = [
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'songs',     label: 'Songs' },
@@ -236,6 +236,19 @@ export const Sidebar = ({ activePage, setActivePage, onLogout, role }) => {
             {role === 'ARTIST' ? 'Artist' : 'Listener'}
           </span>
         </div>
+
+        {role === 'ARTIST' && (
+          <div style={{
+            marginTop: 12,
+            fontFamily: "'DM Mono', monospace",
+            fontSize: '10px',
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
+            color: '#6f6f6f',
+          }}>
+            Followers: <span style={{ color: '#1DB954' }}>{artistFollowerCount}</span>
+          </div>
+        )}
       </div>
 
       {/* Core nav */}

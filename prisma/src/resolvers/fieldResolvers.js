@@ -38,6 +38,11 @@ module.exports = {
   Listener: {
     playlists: (listener, _, { loaders }) => loaders.listenerPlaylists.load(listener.id),
     reviews: (listener, _, { loaders }) => loaders.listenerReviews.load(listener.id),
+    followedArtists: (listener) =>
+      prisma.artist.findMany({
+        where: { followers: { some: { listenerId: listener.id } } },
+        orderBy: STABLE_ORDER_BY,
+      }),
   },
 
   Artist: {
@@ -48,6 +53,36 @@ module.exports = {
     albumCount: (artist) => {
       if (artist?._count?.albums != null) return artist._count.albums;
       return prisma.album.count({ where: { artistId: artist.id } });
+    },
+    followersCount: (artist) => {
+      if (artist?._count?.followers != null) return artist._count.followers;
+      return prisma.artistFollow.count({ where: { artistId: artist.id } });
+    },
+    followedByMe: async (artist, _, { user }) => {
+      if (!user || user.role !== 'LISTENER' || !user.email) return false;
+
+      if (Array.isArray(artist.followers)) {
+        return artist.followers.length > 0;
+      }
+
+      const listener = await prisma.listener.findUnique({
+        where: { email: user.email },
+        select: { id: true },
+      });
+
+      if (!listener) return false;
+
+      const follow = await prisma.artistFollow.findUnique({
+        where: {
+          listenerId_artistId: {
+            listenerId: listener.id,
+            artistId: artist.id,
+          },
+        },
+        select: { artistId: true },
+      });
+
+      return !!follow;
     },
     albums: (artist, args, { loaders }) => {
       if (!hasPaginationArgs(args)) {

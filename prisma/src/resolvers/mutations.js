@@ -349,13 +349,16 @@ const mutationResolvers = {
     const normalizedTitle = input.title.trim();
 
     try {
-      return await prisma.album.create({
+      const album = await prisma.album.create({
         data: {
           title: normalizedTitle,
           releaseYear: input.releaseYear,
           artistId,
         },
       });
+
+      pubsub.publish(`ARTIST_ALBUM_ADDED_${artistId}`, { artistAlbumAdded: album });
+      return album;
     } catch (error) {
       throw formatPrismaError(error);
     }
@@ -399,59 +402,39 @@ const mutationResolvers = {
     const normalizedTitle = input.title.trim();
 
     try {
-      const song = await prisma.$transaction(async (tx) => {
-        // Album is optional
-        let albumId = null;
-        if (input.albumId != null) {
-          albumId = parsePositiveId(input.albumId, 'albumId');
-        }
+      // Album is optional
+      let albumId = null;
+      if (input.albumId != null) {
+        albumId = parsePositiveId(input.albumId, 'albumId');
+      }
 
-        const artistId = parsePositiveId(input.artistId, 'artistId');
-        const genreId = parsePositiveId(input.genreId, 'genreId');
+      const artistId = parsePositiveId(input.artistId, 'artistId');
+      const genreId = parsePositiveId(input.genreId, 'genreId');
 
-        const whereClause = { 
-          title: normalizedTitle, 
-          artistId
-        };
-        if (albumId !== null) {
-          whereClause.albumId = albumId;
-        }
+      const songData = {
+        title: normalizedTitle,
+        duration: input.duration,
+        artistId,
+        genreId,
+      };
 
-        const existingSong = await tx.song.findFirst({
-          where: whereClause,
-        });
-        if (existingSong) {
-          throw new GraphQLError('Song already exists for this artist and album', {
-            extensions: { code: 'BAD_USER_INPUT' },
-          });
-        }
+      // Only include albumId if it's not null
+      if (albumId !== null) {
+        songData.albumId = albumId;
+      }
 
-        const songData = {
-          title: normalizedTitle,
-          duration: input.duration,
-          artistId,
-          genreId,
-        };
+      // Only include explicit if it's provided
+      if (input.explicit !== undefined && input.explicit !== null) {
+        songData.explicit = input.explicit;
+      }
 
-        // Only include albumId if it's not null
-        if (albumId !== null) {
-          songData.albumId = albumId;
-        }
-
-        // Only include explicit if it's provided
-        if (input.explicit !== undefined && input.explicit !== null) {
-          songData.explicit = input.explicit;
-        }
-
-        // Return base song row; relations are resolved lazily via field resolvers + DataLoader.
-        const createdSong = await tx.song.create({
-          data: songData,
-        });
-
-        return createdSong;
+      // Return base song row; relations are resolved lazily via field resolvers + DataLoader.
+      const song = await prisma.song.create({
+        data: songData,
       });
 
       pubsub.publish('SONG_ADDED', { songAdded: song });
+      pubsub.publish(`ARTIST_SONG_ADDED_${artistId}`, { artistSongAdded: song });
       return song;
     } catch (error) {
       throw formatPrismaError(error);
@@ -650,9 +633,10 @@ const mutationResolvers = {
 
       const review = await prisma.review.create({
         data: { content: input.content.trim(), score: input.score, songId, listenerId: dbListener.id },
-        include: { song: true, listener: true },
+        include: { song: { include: { artist: true } }, listener: true },
       });
       pubsub.publish('REVIEW_ADDED', { reviewAdded: review });
+      pubsub.publish(`REVIEW_ADDED_FOR_ARTIST_${review.song.artistId}`, { reviewAddedForArtist: review });
       return review;
     } catch (error) {
       throw formatPrismaError(error);
@@ -667,6 +651,67 @@ const mutationResolvers = {
     } catch (error) {
       throw formatPrismaError(error);
     }
+  },
+
+  followArtist: async (_, { input }, { user }) => {
+    requireListener(user);
+    const artistId = parsePositiveId(input.artistId, 'artistId');
+
+    const listener = await prisma.listener.upsert({
+      where: { email: user.email },
+      create: { email: user.email },
+      update: {},
+      select: { id: true },
+    });
+
+    const artist = await prisma.artist.findUnique({
+      where: { id: artistId },
+      select: { id: true },
+    });
+
+    if (!artist) {
+      throw new GraphQLError('The specified artist does not exist', {
+        extensions: { code: 'BAD_USER_INPUT' },
+      });
+    }
+
+    try {
+      await prisma.artistFollow.create({
+        data: {
+          listenerId: listener.id,
+          artistId,
+        },
+      });
+      return true;
+    } catch (error) {
+      if (error?.code === 'P2002') {
+        return true;
+      }
+      throw formatPrismaError(error);
+    }
+  },
+
+  unfollowArtist: async (_, { input }, { user }) => {
+    requireListener(user);
+    const artistId = parsePositiveId(input.artistId, 'artistId');
+
+    const listener = await prisma.listener.findUnique({
+      where: { email: user.email },
+      select: { id: true },
+    });
+
+    if (!listener) {
+      return true;
+    }
+
+    await prisma.artistFollow.deleteMany({
+      where: {
+        listenerId: listener.id,
+        artistId,
+      },
+    });
+
+    return true;
   },
 };
 

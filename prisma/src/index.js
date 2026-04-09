@@ -18,6 +18,11 @@ const { createLoaders } = require('./loaders');
 const { getUserFromHttpRequest, getUserFromWsContext } = require('./auth');
 const { requireClientCredentials } = require('./clientAuth');
 
+function isIntrospectionRequest(body) {
+  const query = String(body?.query || '');
+  return body?.operationName === 'IntrospectionQuery' || query.includes('__schema') || query.includes('__type');
+}
+
 // Create base schema
 const schema = makeExecutableSchema({
   typeDefs,
@@ -63,16 +68,18 @@ async function start() {
     credentials: true,
   }));
 
-  // Allow Apollo Sandbox/landing page requests, but enforce client credentials on GraphQL POSTs.
-  app.use((req, res, next) => {
-    if (req.method === 'POST' && req.path === '/graphql') {
-      return requireClientCredentials(req, res, next);
-    }
-    return next();
-  });
-
   // GraphQL endpoint
-  app.use('/graphql', express.json(), expressMiddleware(server, {
+  app.use('/graphql', express.json(), (req, res, next) => {
+    if (req.method !== 'POST') {
+      return next();
+    }
+
+    if (isIntrospectionRequest(req.body)) {
+      return next();
+    }
+
+    return requireClientCredentials(req, res, next);
+  }, expressMiddleware(server, {
     context: async ({ req }) => ({
       loaders: createLoaders(),
       user: getUserFromHttpRequest(req),

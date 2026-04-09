@@ -85,6 +85,15 @@ function requireAuth(user) {
   }
 }
 
+function requireListener(user) {
+  requireAuth(user);
+  if (user.role !== 'LISTENER') {
+    throw new GraphQLError('This action requires LISTENER role', {
+      extensions: { code: 'FORBIDDEN' },
+    });
+  }
+}
+
 function getArtistWhere(filter) {
   if (!filter) return undefined;
 
@@ -184,17 +193,61 @@ module.exports = {
     const { take, skip } = getPaginationArgs(args);
     const where = getArtistWhere(args?.filter);
     const orderBy = getOrderBy(args?.sort, ['id', 'name', 'createdAt']);
-    return prisma.artist.findMany({
-      take,
-      skip,
-      where,
-      orderBy,
-      include: { _count: { select: { songs: true, albums: true } } },
-    });
+    return (async () => {
+      let listenerId;
+      if (user.role === 'LISTENER') {
+        const listener = await prisma.listener.findUnique({
+          where: { email: user.email },
+          select: { id: true },
+        });
+        listenerId = listener?.id;
+      }
+
+      return prisma.artist.findMany({
+        take,
+        skip,
+        where,
+        orderBy,
+        include: {
+          _count: { select: { songs: true, albums: true, followers: true } },
+          followers: listenerId
+            ? { where: { listenerId }, select: { listenerId: true } }
+            : false,
+        },
+      });
+    })();
   },
   artist:    (_, { id }, { user }) => {
     requireAuth(user);
     return prisma.artist.findUnique({ where: { id: parsePositiveId(id, 'id') } });
+  },
+
+  myFollowedArtists: async (_, args, { user }) => {
+    requireListener(user);
+    const { take, skip } = getPaginationArgs(args);
+    const orderBy = getOrderBy(args?.sort, ['id', 'name', 'createdAt']);
+
+    const listener = await prisma.listener.findUnique({
+      where: { email: user.email },
+      select: { id: true },
+    });
+
+    if (!listener) {
+      return [];
+    }
+
+    return prisma.artist.findMany({
+      where: {
+        followers: { some: { listenerId: listener.id } },
+      },
+      take,
+      skip,
+      orderBy,
+      include: {
+        _count: { select: { songs: true, albums: true, followers: true } },
+        followers: { where: { listenerId: listener.id }, select: { listenerId: true } },
+      },
+    });
   },
 
   albums:    (_, args, { user }) => {

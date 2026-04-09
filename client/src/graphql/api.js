@@ -130,6 +130,32 @@ export const ARTISTS_QUERY = `
       id
       name
       songCount
+      followedByMe
+      followersCount
+    }
+  }
+`;
+
+export const FOLLOW_ARTIST_MUTATION = `
+  mutation FollowArtist($input: FollowArtistInput!) {
+    followArtist(input: $input)
+  }
+`;
+
+export const UNFOLLOW_ARTIST_MUTATION = `
+  mutation UnfollowArtist($input: FollowArtistInput!) {
+    unfollowArtist(input: $input)
+  }
+`;
+
+export const MY_FOLLOWED_ARTISTS_QUERY = `
+  query MyFollowedArtists($skip: Int, $take: Int, $sort: ArtistSortInput) {
+    myFollowedArtists(skip: $skip, take: $take, sort: $sort) {
+      id
+      name
+      songCount
+      followedByMe
+      followersCount
     }
   }
 `;
@@ -335,6 +361,14 @@ export const GET_TOTAL_ALBUMS_QUERY = `
   query GetTotalAlbums($artistEmail: String!) {
     artists(filter: { email: $artistEmail }, skip: 0, take: 1) {
       albumCount
+    }
+  }
+`;
+
+export const GET_ARTIST_FOLLOWER_COUNT_QUERY = `
+  query GetArtistFollowerCount($artistEmail: String!) {
+    artists(filter: { email: $artistEmail }, skip: 0, take: 1) {
+      followersCount
     }
   }
 `;

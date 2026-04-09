@@ -13,6 +13,7 @@ model Listener {
   passwordHash String?
   playlists Playlist[]
   reviews   Review[]
+  follows   ArtistFollow[]
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 }
@@ -32,8 +33,21 @@ model Artist {
   passwordHash String?
   albums    Album[]
   songs     Song[]
+  followers ArtistFollow[]
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
+}
+
+model ArtistFollow {
+  listenerId Int
+  artistId   Int
+  createdAt  DateTime @default(now())
+
+  listener Listener @relation(fields: [listenerId], references: [id], onDelete: Cascade)
+  artist   Artist   @relation(fields: [artistId], references: [id], onDelete: Cascade)
+
+  @@id([listenerId, artistId])
+  @@index([artistId])
 }
 
 model Album {
