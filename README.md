@@ -1,323 +1,264 @@
-# Mini Projet GraphQL - Theme Musique
+# Music GraphQL API - Global Project README
 
-API GraphQL autour du domaine musique avec les entites suivantes:
-- Genre
+This repository contains a complete music platform with:
+- A GraphQL backend (Node.js, Apollo Server, Prisma, PostgreSQL)
+- A React client (Vite)
+- Authentication, role-based access control, pagination/filter/sort, real-time subscriptions, follow system, and in-app notifications
+
+This README is designed for presentation day: what each feature does, and exactly how it is implemented.
+
+## 1) Project Architecture
+
+Backend:
+- Node.js + Express 5 + Apollo Server 5
+- GraphQL schema-first (typeDefs + resolvers)
+- Prisma 7 + PostgreSQL
+- WebSocket subscriptions with graphql-ws
+
+Frontend:
+- React 18 + Vite
+- Custom GraphQL fetch layer with cache and request deduplication
+- Real-time notifications via websocket subscriptions
+
+Main folders:
+- prisma/schema.prisma -> database models and constraints
+- prisma/src/schema/typeDefs.js -> GraphQL API contract
+- prisma/src/resolvers/* -> business logic (queries, mutations, subscriptions, fields)
+- prisma/src/index.js -> API bootstrap, middleware, HTTP + WS server
+- client/src/graphql/api.js -> frontend queries/mutations and fetch wrapper
+- client/src/realtime/subscriptions.js -> frontend websocket client
+- client/src/App.jsx -> shell, routing by page state, notification center
+- client/src/pages/* -> UI pages by domain
+
+## 2) Domain Model (Data)
+
+Core entities:
+- Listener
 - Artist
+- Genre
 - Album
 - Song
 - Playlist
 - Review
+- ArtistFollow (listener <-> artist follow relationship)
 
-Le projet est construit avec Node.js, Apollo Server, Express, Prisma et PostgreSQL.
+Where defined:
+- prisma/schema.prisma
 
-**Stack complet**: Node.js, Apollo Server 5, Express 5, Prisma 7 (avec @prisma/adapter-pg pour Neon), PostgreSQL, DataLoader 2, graphql-scalars (DateTime).
+Important constraints used by business rules:
+- Album unique by (title, artistId, releaseYear)
+- Song unique by (title, albumId, artistId)
+- Playlist unique by (name, listenerId)
+- Review unique by (songId, listenerId)
+- ArtistFollow composite key (listenerId, artistId)
 
-## 1. Objectif de la Phase 1
+## 3) Authentication and Security
 
-Cette phase valide les fondamentaux GraphQL avec un dataset riche:
-- Schema GraphQL et types
-- Queries avec pagination et filtrage
-- Mutations CRUD
-- Subscriptions temps réel
-- Modèle de données relationnel avancé
-- **Dataset**: 34k+ songs Spotify avec métadata rich (popularity, explicit)
+Two layers are used:
 
-## 2. Ce que couvre ce projet
+1) Client credentials (application-level)
+- Required for GraphQL POST calls
+- Headers: X-Client-ID and X-Client-Secret
+- Implemented in prisma/src/clientAuth.js
+- Enforced in prisma/src/index.js with requireClientCredentials
 
-### 2.1 Modelisation des donnees
-- **39 genres** Spotify
-- **13,547 artistes** avec métadonnées
-- **25,496 albums** (titre, année)
-- **34,660 songs** avec:
-  - Titre, durée en ms
-  - Album (optionnel)
-  - Artiste + Genre
-  - **Popularity** (0-100, score Spotify)
-  - **Explicit** (contenu explicite: true/false)
-- Playlist (vide initialement, créée par utilisateurs)
-- Review (vide initialement, créée par utilisateurs)
-- **AUTO-CLEANUP**: Dernière song d'album = album auto-supprimé
+2) JWT (user-level)
+- Used for user identity and role checks
+- Login/Signup returns token
+- Parsed in prisma/src/auth.js
+- Role checks implemented in resolver helpers (requireAuth, requireArtist, requireListener)
 
-### 2.2 Validation metier implementee
-- Protection contre les doublons:
-  - Artist: name
-  - Album: title + artistId + releaseYear
-  - Song: title + albumId + artistId (albumId peut etre NULL - permettant songs sans album)
-- Champs texte obligatoires non vides
-- score de review entre 1 et 10
-- duration positive
-- Erreurs GraphQL explicites pour conflits/contraintes
+Note:
+- Introspection/Sandbox loading is allowed so GraphQL docs still open in browser.
 
-### 2.3 Temps reel
-Subscriptions disponibles:
-- songAdded
-- songDeleted
-- artistAdded
-- reviewAdded(songId)
+## 4) GraphQL Features Implemented
 
-## 3. Prerequis
+Schema location:
+- prisma/src/schema/typeDefs.js
 
+Query features:
+- Pagination (take, skip)
+- Sorting (field + direction)
+- Filtering for songs/artists
+- Stats query
+- Followed artists query for listeners
+
+Mutation features:
+- Auth: login, signup
+- CRUD operations for music domain
+- Playlist management
+- Review management
+- Follow/unfollow artist
+
+Subscription features:
+- Generic events: songAdded, songDeleted, artistAdded, reviewAdded
+- Targeted events:
+  - artistSongAdded(artistId)
+  - artistAlbumAdded(artistId)
+  - reviewAddedForArtist(artistId)
+
+Subscription resolver location:
+- prisma/src/resolvers/subscriptions.js
+
+Publish points location:
+- prisma/src/resolvers/mutations.js
+
+## 5) Frontend Features Implemented
+
+Global app shell:
+- client/src/App.jsx
+
+Implemented UX features:
+- Role-aware sidebar and page navigation
+- Persistent current page after refresh (localStorage)
+- In-app toast notifications (auto-dismiss + manual close)
+- Notification history panel
+- Notification history persistence (localStorage)
+
+Catalog and browsing:
+- client/src/pages/CatalogPages.jsx
+- Sort controls in songs/artists/genres pages
+- Listener-only "All artists / Followed artists" filter in artists page
+- Follow/unfollow buttons on artist cards
+
+Artist experience:
+- client/src/pages/ArtistPages.jsx
+- Add song / add album forms
+- My songs / my albums views
+- Artist follower count shown in sidebar badge area
+
+Community experience:
+- client/src/pages/CommunityPages.jsx
+- Playlist and reviews workflows
+
+## 6) Real-Time Notification System
+
+Backend flow:
+1) A mutation triggers an event publish in prisma/src/resolvers/mutations.js
+2) Subscription resolver in prisma/src/resolvers/subscriptions.js routes events by channel
+3) WS server in prisma/src/index.js serves subscriptions at ws://localhost:4000/graphql
+
+Frontend flow:
+1) client/src/realtime/subscriptions.js creates graphql-ws client
+2) client/src/App.jsx subscribes according to user role:
+   - Listener subscribes to followed artists song/album events
+   - Artist subscribes to reviewAddedForArtist for own artist id
+3) Notifications are pushed to toast + history state
+
+## 7) Performance Optimizations
+
+Backend:
+- DataLoader for relation batching (prisma/src/loaders.js)
+- Field resolvers compute counts lazily instead of heavy eager nesting
+
+Frontend:
+- Query cache with TTL + in-flight deduplication in client/src/graphql/api.js
+- Cache clear on mutations
+
+Result:
+- Lower repeated requests when switching tabs/pages
+- Faster catalog/community/dashboard behavior
+
+## 8) Why Some Errors Happen (Important for Demo Q&A)
+
+"This record already exists" when adding review:
+- Caused by unique constraint @@unique([songId, listenerId])
+- Means one listener can submit only one review per song
+
+"Invalid client credentials":
+- Missing or wrong X-Client-ID / X-Client-Secret headers on HTTP GraphQL POST
+
+Subscription field not found errors:
+- Usually backend server not restarted after schema updates
+
+## 9) Setup and Run
+
+Prerequisites:
 - Node.js 18+
-- PostgreSQL accessible via DATABASE_URL
+- PostgreSQL database
 
-## 4. Configuration et commandes a lancer
+Create .env in project root:
+- DATABASE_URL=your_postgres_connection_string
+- JWT_SECRET=your_secret
+- JWT_EXPIRES_IN=7d (optional)
+- PORT=4000 (optional)
+- ADMIN_SECRET=optional_admin_secret
 
-### 4.1 Installer les dependances
+Install dependencies:
 
-```bash
-npm install
-```
+Backend root:
+- npm install
 
-### 4.2 Configurer l environnement
+Frontend:
+- cd client
+- npm install
 
- `.env`:
-- DATABASE_URL
-- PORT (optionnel, par defaut 4000)
+Prisma sync:
+- npx prisma generate
+- npx prisma db push
 
-### 4.3 Synchroniser le schema Prisma
+Seed options:
+- npm run seed (small demo seed)
+- npm run seed-spotify (large dataset)
 
-```bash
-npx prisma generate
-npx prisma db push --accept-data-loss
-```
+Run backend:
+- npm start
 
-### 4.4 Alimenter la base avec dataset Spotify (34,660 songs)
+Run frontend:
+- cd client
+- npm run dev
 
-Télécharger depuis Kaggle: https://www.kaggle.com/datasets/maharshipandya/-spotify-tracks-dataset
+URLs:
+- API HTTP: http://localhost:4000/graphql
+- API WS: ws://localhost:4000/graphql
+- Client: http://localhost:3000
 
-Placer le CSV dans `prisma/dataset.csv`, puis:
+## 10) Demo Script for Presentation (Suggested)
 
-```bash
-npm run seed-spotify
-```
+1) Login as listener and artist in two browser windows
+2) Listener opens Artists page and follows one artist
+3) Artist adds a song
+4) Listener receives "New song" toast and history entry
+5) Listener adds a review on artist song
+6) Artist receives "New review" toast
+7) Show sidebar follower count for artist
+8) Refresh page to show persistence:
+   - Stays on same page
+   - Notification history remains
 
-**Alternative**: Données de démo (petite taille):
-```bash
-npm run seed
-```
+## 11) Current Limitations / Next Improvements
 
-### 4.5 Demarrer l API
+- Review update flow is not yet explicit (second review for same song fails by unique rule)
+- Notification history is localStorage-based (not shared across devices)
+- Client secrets are static in source for demo; production should use secure secret management
 
-```bash
-npm start
-```
+## 12) Quick File Map (Where to explain code live)
 
-Endpoints:
-- GraphQL HTTP: http://localhost:4000/graphql
-- GraphQL WS: ws://localhost:4000/graphql
+Backend core:
+- prisma/src/index.js
+- prisma/src/schema/typeDefs.js
+- prisma/src/resolvers/queries.js
+- prisma/src/resolvers/mutations.js
+- prisma/src/resolvers/subscriptions.js
+- prisma/src/resolvers/fieldResolvers.js
+- prisma/src/clientAuth.js
+- prisma/src/auth.js
 
-## 5. Plan de tests complet dans Apollo
+Frontend core:
+- client/src/App.jsx
+- client/src/components/Sidebar.jsx
+- client/src/pages/CatalogPages.jsx
+- client/src/pages/ArtistPages.jsx
+- client/src/pages/CommunityPages.jsx
+- client/src/graphql/api.js
+- client/src/realtime/subscriptions.js
 
-Ouvrir Apollo Sandbox sur:
-http://localhost:4000/graphql
+Database:
+- prisma/schema.prisma
 
-## 5.0 Types de données spécialisées
+---
 
-### DateTime Scalar
-
-Tous les types d'entités (`Genre`, `Artist`, `Album`, `Song`, `Playlist`, `Review`) exposent maintenant 2 champs temporels:
-- **createdAt**: Date/heure de création (ISO 8601)
-- **updatedAt**: Date/heure de dernière modification (ISO 8601)
-
-**Format**: Strings ISO 8601 (ex: `"2026-03-30T10:45:23.123Z"`)
-
-**Utilité**:
-- Afficher "Créé le..." sur l'interface
-- Trier les résultats par date (récemment ajouté, modifié)
-- Log d'audit (qui a agi quand?)
-- Gestion du cache côté client
-
-### Exemple: Récupérer les dates d'une song
-
-**Option 1**: Récupérer la première song avec ses timestamps
-
-```graphql
-query GetFirstSongWithDates {
-  songs(take: 1, skip: 0) {
-    id
-    title
-    createdAt
-    updatedAt
-  }
-}
-```
-
-**Réponse:**
-```json
-{
-  "data": {
-    "songs": [
-      {
-        "id": "491",
-        "title": "Comedy",
-        "createdAt": "2026-04-01T00:09:03.668Z",
-        "updatedAt": "2026-04-01T00:09:03.668Z"
-      }
-    ]
-  }
-}
-```
-
-**Option 2**: Récupérer une song spécifique par ID
-
-```graphql
-query GetSongByIdWithDates {
-  song(id: "500") {
-    id
-    title
-    createdAt
-    updatedAt
-  }
-}
-```
-
-## 5.1 Queries (lecture)
-
-### Q0. Statistiques globales (NOUVEAU)
-
-```graphql
-query GetStats {
-  stats {
-    genres
-    artists
-    albums
-    songs
-    playlists
-    reviews
-  }
-}
-```
-
-**Réponse** (avec dataset Spotify):
-```json
-{
-  "data": {
-    "stats": {
-      "genres": 39,
-      "artists": 13547,
-      "albums": 25496,
-      "songs": 34660,
-      "playlists": 0,
-      "reviews": 0
-    }
-  }
-}
-```
-
-### Q1. Genres
-
-```graphql
-query GetGenres {
-  genres {
-    id
-    name
-    createdAt
-    updatedAt
-  }
-}
-```
-
-### Q2. Artists
-
-```graphql
-query GetArtists {
-  artists(take: 20, skip: 0, filter: { name: "queen"}) {
-    id
-    name
-  }
-}
-```
-
-Exemple sans filtre:
-
-```graphql
-query GetArtistsNoFilter {
-  artists(take: 20, skip: 0) {
-    id
-    name
-  }
-}
-```
-
-### Q3. Artist by ID
-
-```graphql
-query GetArtistById {
-  artist(id: "500") {
-    id
-    name
-    albums { id title releaseYear }
-    songs { id title }
-  }
-}
-```
-
-### Q4. Albums
-
-```graphql
-query GetAlbums {
-  albums {
-    id
-    title
-    releaseYear
-    artist { id name }
-    songs { id title }
-  }
-}
-```
-
-### Q5. Album by ID
-
-```graphql
-query GetAlbumById {
-  album(id: "350") {
-    id
-    title
-    releaseYear
-    artist { id name }
-    songs { id title duration }
-  }
-}
-```.
-
-
-### Q6. Songs
-
-```graphql
-query GetSongs {
-  songs(take: 20, skip: 0, filter: { artistName: "queen", genreId: "50" }) {
-    id
-    title
-    duration
-    popularity
-    explicit
-    artist { id name }
-    album { id title }
-    genre { id name }
-    createdAt
-    updatedAt
-  }
-}
-```
-
-**Note**: 
-- `popularity` (0-100): Score de popularité Spotify
-- `explicit` (true/false): Indique contenu explicite
-- Pré-remplis pour données Spotify, null pour ajouts manuels
-
-Autres filtres possibles pour `songs`:
-- `filter: { title: "love" }`
-- `filter: { artistId: "2" }`
-- Combinaison possible avec `take/skip`
-
-### Q7. Song by ID
-
-```graphql
-query GetSongById {
-  song(id: "1000") {
-    id
-    title
-    duration
+If you want, I can also generate a 2-minute oral pitch script and a 5-minute technical deep-dive script based on this README.
     popularity
     explicit
     artist { id name }
