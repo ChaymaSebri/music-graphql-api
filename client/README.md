@@ -1,262 +1,194 @@
 # Music GraphQL Client
 
-A beautiful, role-based Spotify-like dark mode client for the Music GraphQL API with green accents, JWT authentication, and dynamic user features.
+Role-aware React client for the Music GraphQL API. It includes JWT auth, client-credential headers, follow-based realtime notifications, and listener/artist-specific workflows.
 
-## ✨ Key Features
+## What Is Implemented
 
-✅ **JWT Token Authentication** - Secure login with role-based access  
-✅ **Dark Mode Theme** - Spotify-inspired dark interface (#121212)  
-✅ **Role-Based Access** - Different UI for ARTIST vs LISTENER roles  
-✅ **Interactive Song Modal** - Click songs to add to playlists or write reviews  
-✅ **Playlist Management** - Create and manage personal playlists  
-✅ **Review System** - Write and view song reviews with star ratings (1-10)  
-✅ **Responsive Design** - Works on desktop and tablet  
-✅ **Pagination** - Browse 20,000+ songs efficiently  
-✅ **Real-time Data** - Connected to your GraphQL API  
-✅ **Green Accent Colors** - Primary green (#1DB954) matching Spotify  
+- JWT sign in and sign up flow.
+- Password visibility toggle on auth forms.
+- Role-based navigation and pages for `LISTENER` and `ARTIST`.
+- Songs, artists, genres, playlists, reviews, albums, and stats pages.
+- Follow and unfollow artist flow.
+- Listener filter to show only followed artists.
+- Realtime notifications over GraphQL subscriptions:
+  - listener: followed artist publishes song/album
+  - artist: new review on artist songs
+- Notification toast stack with manual dismiss.
+- Persistent notification history panel (`localStorage`).
+- Active page persistence across refresh (`localStorage`).
+- Client-side GraphQL query cache with in-flight request deduplication.
 
-## 🎭 Pages by Role
+## Tech Stack
 
-### LISTENER Role
-- **Dashboard** - Statistics overview (songs, artists, albums, genres)
-- **Songs** - Browse 20,000+ songs → Click any song to open modal
-- **Song Modal** - Add to playlist (existing or create new), write review
-- **My Playlists** - View all your playlists with song lists
-- **My Reviews** - View all your song reviews with ratings and stars
-- **Artists** - View all artists (read-only)
-- **Genres** - Explore all music genres (read-only)
+- React 18
+- Vite 4
+- GraphQL over HTTP (`fetch`)
+- GraphQL subscriptions over WebSocket (`graphql-ws`)
 
-### ARTIST Role
-- **Dashboard** - Statistics overview
-- **My Songs** - Create and manage your songs (embedded form)
-- **My Albums** - Create and manage your albums (embedded form)
-- **Artists** - View all artists (read-only)
-- **Genres** - Explore all genres (read-only)
-- **Songs** - Browse all songs (read-only)
+## Authentication And Security Model
 
-## 🔐 Authentication
+The client sends two auth layers:
 
-The client uses **JWT token-based authentication**:
+1. API client credentials in headers for GraphQL HTTP requests:
+   - `X-Client-ID`
+   - `X-Client-Secret`
+2. User JWT in `Authorization: Bearer <token>` for logged-in operations.
 
-**Test Credentials:**
+Client credential values come from:
 
-**LISTENER Account:**
-- Email: `listener@example.com`
-- Password: `listener-password`
+- `VITE_CLIENT_ID` (default: `web_client`)
+- `VITE_CLIENT_SECRET` (default: `web_secret_key_abc123xyz789`)
 
-**ARTIST Account:**
-- Email: `artist@example.com`
-- Password: `artist-password`
+## Pages By Role
 
-Token is stored in browser `localStorage` and includes:
-- `id` - User ID (extracted from JWT payload)
-- `email` - User email
-- `role` - User role (ARTIST or LISTENER)
+### Shared
 
-## 🚀 Installation & Setup
+- Dashboard
+- Songs
+- Artists
+- Genres
+
+### Listener
+
+- My Playlists
+- My Reviews
+- Song detail modal (add to playlist, write review)
+- Follow/unfollow artists
+- Followed artists filter in artist list
+
+### Artist
+
+- My Songs
+- My Albums
+- Sidebar follower count
+- Realtime review notifications for own catalog
+
+## Realtime Notification Behavior
+
+- Listener subscriptions are dynamically created for each followed artist.
+- Artist subscriptions are created for the current artist ID from JWT (`sub`).
+- Recent notifications are stored locally and shown in the history drawer.
+- History is capped and can be cleared from UI.
+
+## Caching Behavior
+
+Implemented in `src/graphql/api.js`:
+
+- Query responses are cached for a short TTL (default 20s).
+- Identical in-flight query requests are deduplicated.
+- Mutations automatically clear the cache.
+
+## Local Persistence
+
+- Active page key: `appActivePage`
+- Notification history key: `appNotificationHistory`
+- Auth token and user metadata are persisted by auth context.
+
+## Project Structure (Current)
+
+```text
+client/
+├── src/
+│   ├── App.jsx
+│   ├── main.jsx
+│   ├── graphql/
+│   │   └── api.js
+│   ├── realtime/
+│   │   └── subscriptions.js
+│   ├── context/
+│   │   └── AuthContext.jsx
+│   ├── components/
+│   │   ├── Login.jsx
+│   │   ├── Sidebar.jsx
+│   │   └── UI.jsx
+│   ├── pages/
+│   │   ├── CatalogPages.jsx
+│   │   ├── CommunityPages.jsx
+│   │   └── ArtistPages.jsx
+│   ├── constants/
+│   │   └── icons.jsx
+│   ├── styles/
+│   │   └── theme.js
+│   └── utils/
+├── package.json
+├── vite.config.js
+├── QUICKSTART.md
+└── README.md
+```
+
+## Setup
 
 ### Prerequisites
-- Node.js 16+ installed
-- GraphQL API running on `http://localhost:4000`
-- Database seeded with music data
 
-### 1. Install Dependencies
+- Node.js 16+
+- Backend API running at `http://localhost:4000/graphql`
+
+### Install
 
 ```bash
 cd client
 npm install
 ```
 
-### 2. Start Development Server
+### Run Dev Server
 
 ```bash
 npm run dev
 ```
 
-The client will run on `http://localhost:3000`
+Default URL: `http://localhost:3000`
 
-### 3. Build for Production
+### Build
 
 ```bash
 npm run build
 npm run preview
 ```
 
-## 📖 How to Use
+## Environment Variables (Optional)
 
-1. **Start the API** (from root directory):
-   ```bash
-   npm start
-   ```
+Create `client/.env`:
 
-2. **Seed the database** (if needed):
-   ```bash
-   node prisma/seed-spotify.js
-   ```
-
-3. **Start the client** (from client directory):
-   ```bash
-   npm run dev
-   ```
-
-4. **Open browser** at `http://localhost:3000`
-
-5. **Login** with test credentials above
-
-6. **Explore based on your role:**
-   - **Listener**: Click songs to create playlists and write reviews
-   - **Artist**: Create songs and albums in "My Songs" and "My Albums" pages
-
-## 🎨 Dark Mode & Theming
-
-All colors are defined in `src/styles/theme.js`:
-
-- **Primary Green**: `#1DB954` (Spotify Green)
-- **Hover Green**: `#1ed760` (Light Green)
-- **Background**: `#121212` (Almost Black)
-- **Cards**: `#282828` (Dark Gray)
-- **Text**: `#ffffff` (White)
-- **Secondary Text**: `#BBBBBB` (Light Gray)
-- **Borders**: `#404040` (Medium Gray)
-
-Easily customize spacing and responsive breakpoints in the same file.
-
-## 🏗️ Project Structure
-
-```
-client/
-├── src/
-│   ├── App.jsx                      # Main app with routing, state, and pages
-│   ├── main.jsx                     # React entry point
-│   ├── context/
-│   │   └── AuthContext.jsx          # Authentication context (token, role, email)
-│   ├── components/
-│   │   ├── Login.jsx                # Login form with JWT auth
-│   │   ├── Sidebar.jsx              # Role-aware navigation sidebar
-│   │   ├── UI.jsx                   # Reusable UI components
-│   │   └── SongDetailModal.jsx      # Interactive song modal (listeners only)
-│   ├── styles/
-│   │   └── theme.js                 # Centralized theme config
-│   └── main.jsx
-├── index.html                       # Vite entry point (root level)
-├── public/                          # Static assets (favicon, images)
-├── package.json
-├── vite.config.js                   # Vite config with GraphQL proxy
-├── QUICKSTART.md                    # Quick start guide
-└── README.md                        # This file
+```bash
+VITE_CLIENT_ID=web_client
+VITE_CLIENT_SECRET=web_secret_key_abc123xyz789
 ```
 
-## 🧩 Components Overview
+If omitted, defaults from `src/graphql/api.js` are used.
 
-**Login.jsx**
-- Takes email and password
-- Calls GraphQL mutation to get JWT token
-- Stores token in localStorage
-- Extracts user role from JWT payload
+## Main GraphQL Operations Used
 
-**AuthContext.jsx**
-- Provides: `isAuthenticated`, `token`, `role`, `email`, `login()`, `logout()`
-- Persists token in localStorage
-- Used throughout the app via `useAuth()` hook
+- Auth: `login`, `signup`
+- Catalog: `songs`, `artists`, `genres`, `stats`
+- Follow system: `followArtist`, `unfollowArtist`, `myFollowedArtists`
+- Listener: `addPlaylist`, `addSongToPlaylist`, `updatePlaylist`, `deletePlaylist`, `addReview`, `deleteReview`
+- Artist: `addSong`, `addAlbum`
+- Subscriptions: `artistSongAdded`, `artistAlbumAdded`, `reviewAddedForArtist`
 
-**Sidebar.jsx**
-- Role-aware: Shows different menu items for LISTENER vs ARTIST
-- Dynamic navigation based on `role` from AuthContext
-- Active page highlighting
+## Troubleshooting
 
-**SongDetailModal.jsx**
-- Opens when listener clicks a song card
-- **Playlist Section**: Add to existing playlist or create new
-- **Review Section**: Write review with 1-10 slider rating
-- Displays song metadata: title, artist, genre, popularity, explicit flag
-- Listeners only
+### Login Works But API Requests Fail
 
-**UI Components (UI.jsx)**
-- `<Header>` - Page title and subtitle
-- `<Card>` - Styled card container
-- `<Button>` - Themed button component
-- `<SearchInput>` - Search text input
+- Verify backend is running on port `4000`.
+- Verify client credentials match backend expected values.
 
-## 📡 GraphQL Queries & Mutations
+### No Realtime Notifications
 
-### Queries
-- **GetSongs** - Fetch songs with pagination (20 per page)
-- **GetArtists** - Fetch all artists (10 per page)
-- **GetGenres** - Fetch all genres with songs field (15 per page)
-- **GetStats** - Get statistics (total songs, artists, albums, genres)
-- **GetMyPlaylists** - Fetch user's playlists with songs (listeners only)
-- **GetMyReviews** - Fetch user's reviews with song and rating (listeners only)
+- Verify backend WebSocket endpoint is reachable at `ws://localhost:4000/graphql`.
+- Listener notifications require following at least one artist.
 
-### Mutations
-- **Login** - Authenticate and get JWT token
-- **AddPlaylist** - Create a new playlist (listeners only)
-- **AddSongToPlaylist** - Add song to user's playlist (listeners only)
-- **AddReview** - Write a review for a song (listeners only)
-- **AddSong** - Create a new song (artists only)
-- **AddAlbum** - Create a new album (artists only)
+### Empty Data
 
-## 🔑 Key Features Explained
+- Ensure DB is seeded and backend Prisma migrations are applied.
+- Re-login to refresh JWT claims and context.
 
-### Listener Workflow
-1. **Login** with listener credentials
-2. **View Songs** on Songs page (20,000+ available)
-3. **Click any song** to open SongDetailModal
-4. **In modal, choose:**
-   - Create new playlist + add song
-   - Add song to existing playlist
-   - Write review (1-10 rating)
-5. **View results** in My Playlists and My Reviews pages
+### Port Conflict
 
-### Artist Workflow
-1. **Login** with artist credentials
-2. **Go to My Songs** page
-3. **Fill embedded form** to create new song (title, duration, genre, album optional)
-4. **Go to My Albums** page
-5. **Fill embedded form** to create new album (title, release year)
-
-## 🎯 Database
-
-- **Database**: PostgreSQL (Neon cloud)
-- **ORM**: Prisma v7.6.0
-- **Users**: Each user owns their playlists and reviews
-- **Playlists**: User-specific, can contain multiple songs
-- **Reviews**: One review per song per user (unique constraint)
-- **Songs**: 20,000+ imported from Spotify dataset
-
-## 📝 Notes
-
-✅ **Authentication**: All pages require JWT login  
-✅ **Token Storage**: JWT stored in browser localStorage  
-✅ **Role-Based UI**: Different pages/features for ARTIST vs LISTENER  
-✅ **Pagination**: Efficient data loading with skip/take pagination  
-✅ **User-Owned Data**: Playlists and reviews are user-specific  
-✅ **Modal Interactions**: Song modal only shows for listeners  
-✅ **Embedded Forms**: Add Song/Album forms inline on respective pages  
-✅ **Error Handling**: Alerts for validation errors and API failures  
-
-## 🐛 Troubleshooting
-
-**Black screen on load?**
-- Check browser Console (F12) for errors
-- Verify API is running: `curl http://localhost:4000/graphql`
-- Ensure you're logged in with correct credentials
-
-**No data showing?**
-- Verify database is seeded: `node prisma/seed-spotify.js`
-- Check GraphQL API is connected and running
-- Try refreshing the page
-
-**Can't click on songs?**
-- You must be logged in as LISTENER role
-- Artist role has read-only song view
-
-**Port 3000 in use?**
 ```bash
 npm run dev -- --port 3001
 ```
 
-## 📚 For More Details
+## Notes
 
-- See `QUICKSTART.md` for quick start guide
-- Check `src/styles/theme.js` for all theme colors and spacing
-- Review `src/App.jsx` for complete routing and state logic
+- This README reflects the current role-based and follow-notification version of the client.
+- For full-stack setup and architecture, check the root project README.
